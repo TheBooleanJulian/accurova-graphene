@@ -65,7 +65,7 @@ Montserrat and Inter (variable, full weight range with italics) are bundled as W
 
 ## D9 — Repository and hosting
 
-Development happens in a non-Drive working copy (npm installs corrupt on Google Drive); the Drive folder is a source mirror. Git branches follow `feature/* → dev → main`. The public repository is github.com/TheBooleanJulian/accurova-graphene. `demo/` (the BNI source photos and reference artwork) is committed with the owner's approval. No hosting has been set up; per the fleet's migration plan it would be static assets on Cloudflare Workers, and that needs a separate go-ahead.
+Development happens in a non-Drive working copy (npm installs corrupt on Google Drive); the Drive folder is a source mirror. Git branches follow `feature/* → dev → main`. The public repository is github.com/TheBooleanJulian/accurova-graphene. `demo/` (the BNI source photos and reference artwork) is committed with the owner's approval. Hosting (approved 2026-11-20) follows the fleet migration standard: Cloudflare Workers static assets on the accurova account, custom domain `graphene.accurova.com`, deployed by Workers Builds on pushes to `main`. The custom domain overrides the zone's `*.accurova.com` wildcard for this host, so no DNS edit was needed. CI is GitHub Actions: build, unit tests and the CDP end-to-end suite against the system Chrome on Ubuntu runners. A dev-only test hook keeps `window.__graphene` out of the production bundle (checked on the live build).
 
 ## D10 — Masking tools (2026-11-20)
 

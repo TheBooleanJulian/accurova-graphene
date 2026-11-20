@@ -175,7 +175,7 @@ export function Welcome() {
             <strong>New design</strong>
             <span>Banner, social or print size, or a custom canvas.</span>
           </button>
-          <button className="welcome__action" data-testid="welcome-sample" onClick={() => void openSample(bundled)}>
+          <button className="welcome__action" data-testid="welcome-sample" onClick={() => void openSample(true)}>
             <Icon name="layout-template" size={20} />
             <strong>BNI Crescendo sample</strong>
             <span>{bundled ? "The reference banner, built from the supplied photographs." : "The reference banner; you map your own photographs to it."}</span>
