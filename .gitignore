@@ -1,0 +1,15 @@
+node_modules/
+dist/
+*.local
+.env
+.env.*
+!.env.example
+
+# Client photography and reference artwork. These are real people's photos:
+# keep them out of git. `npm run sample:prepare` copies them into public/samples
+# for local use only.
+demo/
+public/samples/*/assets/
+
+# Test output
+tests/e2e/out/
