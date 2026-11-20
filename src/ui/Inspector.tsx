@@ -10,6 +10,13 @@ import type { AssetRecord, Element, GroupElement, IconElement, ImageElement, Int
 import { canvasMeasure } from "../render/measure.ts";
 import { formatBytes } from "../persist/sniff.ts";
 import {
+  duplicateInPlace,
+  editMask,
+  exitMaskEdit,
+  fitFrameToMaskAction,
+  removeMask,
+  startMaskTool,
+  updateMask,
   alignSelection,
   distributeSelection,
   groupSelection,
@@ -18,7 +25,8 @@ import {
   setFlag,
   ungroupSelection,
 } from "../store/actions.ts";
-import { commit, setState, useEditor } from "../store/editor.ts";
+import { commit, setState, useEditor, type MaskTool } from "../store/editor.ts";
+import { MASK_SHAPE_LABELS } from "../model/mask.ts";
 import { ColorField, Field, FillField, NumberField, Section, Segmented, Toggle } from "./fields.tsx";
 import { Icon } from "./Icon.tsx";
 import { IntegrityBadge, ProvenanceBadge } from "./LeftPanel.tsx";
@@ -545,7 +553,8 @@ function ImageSection({ el, asset }: { el: ImageElement; asset: AssetRecord | nu
           </button>
         </div>
       </Section>
-      <Section title="Mask">
+      <MaskSection el={el} asset={asset} />
+      <Section title="Edges and border">
         <NumberField label="Rad" unit="px" value={el.cornerRadius} min={0} title="Corner radius" onChange={(cornerRadius) => set({ cornerRadius }, "radius")} />
         <span className="label" style={{ fontSize: 10 }}>
           Soft edge fade
@@ -585,6 +594,74 @@ function ImageSection({ el, asset }: { el: ImageElement; asset: AssetRecord | nu
 }
 
 // ---------------------------------------------------------------------------
+
+const MASK_TOOLS: { tool: MaskTool; label: string; icon: Parameters<typeof Icon>[0]["name"] }[] = [
+  { tool: "rect", label: "Rectangle", icon: "square" },
+  { tool: "ellipse", label: "Ellipse", icon: "circle" },
+  { tool: "polygon", label: "Polygon", icon: "hexagon" },
+  { tool: "lasso", label: "Freehand", icon: "square-dashed" },
+];
+
+function MaskSection({ el, asset }: { el: ImageElement; asset: AssetRecord }) {
+  const maskEdit = useEditor((s) => s.maskEdit);
+  const editing = maskEdit?.id === el.id;
+  const m = el.mask;
+  return (
+    <Section title="Mask" aside={m ? <span className="badge badge--magenta">{m.invert ? "Inverted " : ""}{MASK_SHAPE_LABELS[m.shape]}</span> : undefined}>
+      <span className="label" style={{ fontSize: 10 }}>
+        {m ? "Redraw with" : "Draw a mask"}
+      </span>
+      <div className="row" style={{ gap: 2 }}>
+        {MASK_TOOLS.map((t) => (
+          <button
+            key={t.tool}
+            className="icon-btn"
+            title={`${t.label} mask`}
+            aria-label={`${t.label} mask`}
+            aria-pressed={editing && maskEdit?.drawing && maskEdit.tool === t.tool}
+            data-testid={`mask-tool-${t.tool}`}
+            onClick={() => startMaskTool(el.id, t.tool)}
+          >
+            <Icon name={t.icon} />
+          </button>
+        ))}
+      </div>
+      {m && (
+        <>
+          <div className="row">
+            <button className="btn btn--sm" aria-pressed={editing && !maskEdit?.drawing} data-testid="mask-edit" onClick={() => (editing ? exitMaskEdit() : editMask(el.id))}>
+              {editing ? "Done" : "Edit points"}
+            </button>
+            <button className="btn btn--sm btn--ghost" data-testid="mask-remove" onClick={() => removeMask(el.id)}>
+              Remove mask
+            </button>
+          </div>
+          <label className="field">
+            <span className="label">Feather · {Math.round(m.feather)} px</span>
+            <input
+              type="range"
+              className="range"
+              min={0}
+              max={120}
+              value={Math.round(m.feather)}
+              aria-label="Mask feather"
+              data-testid="mask-feather"
+              onChange={(e) => updateMask(el.id, { feather: Number(e.target.value) }, `${el.id}:feather`)}
+            />
+          </label>
+          <Toggle label="Invert (hide the inside)" checked={m.invert} onChange={(invert) => updateMask(el.id, { invert })} />
+          <button className="btn btn--sm" data-testid="mask-fit-frame" disabled={m.invert} title="Shrink the frame to the mask so the selection box hugs the cut-out" onClick={() => fitFrameToMaskAction(el.id)}>
+            Fit frame to mask
+          </button>
+        </>
+      )}
+      <button className="btn btn--sm btn--ghost" data-testid="duplicate-in-place" onClick={() => duplicateInPlace(el.id)}>
+        <Icon name="copy" /> Duplicate in place
+      </button>
+      <p className="hint">Masks hide parts of {asset.name} without changing it, and stay on the subject when you re-crop. To cut one photo into several layers, duplicate it in place and mask each copy.</p>
+    </Section>
+  );
+}
 
 function IconSection({ el }: { el: IconElement }) {
   const doc = useEditor((s) => s.doc)!;

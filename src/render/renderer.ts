@@ -3,6 +3,7 @@
 // in document coordinates; the caller sets up the transform (zoom / export scale).
 import { cssColor } from "../model/color.ts";
 import { imageDrawPlan } from "../model/image.ts";
+import { maskOutlineLocal, type LocalOutline } from "../model/mask.ts";
 import { fontString, layoutText, lineOffset } from "../model/text.ts";
 import type {
   AssetRecord,
@@ -42,6 +43,8 @@ export interface RenderOptions {
   background: boolean;
   /** Image element in crop mode: draw the uncropped image as a ghost behind it. */
   cropModeId?: string | null;
+  /** Image element whose mask is being edited: draw the masked-out area as a ghost. */
+  maskEditId?: string | null;
 }
 
 const supportsFilter = typeof CanvasRenderingContext2D !== "undefined" && "filter" in CanvasRenderingContext2D.prototype;
@@ -293,6 +296,41 @@ function applyFades(c: Ctx, w: number, h: number, fade: ImageElement["fade"]): v
 
 const MAX_OFFSCREEN = 8192;
 
+function outlinePath(o: LocalOutline): Path2D {
+  const p = new Path2D();
+  if (o.kind === "ellipse") {
+    p.ellipse(o.cx, o.cy, Math.max(o.rx, 0), Math.max(o.ry, 0), 0, 0, Math.PI * 2);
+  } else if (o.points.length) {
+    p.moveTo(o.points[0].x, o.points[0].y);
+    for (const q of o.points.slice(1)) p.lineTo(q.x, q.y);
+    p.closePath();
+  }
+  return p;
+}
+
+/** Keep only the masked area of an offscreen layer (o is scaled by k = offscreen px per document px). */
+function applyMask(o: Ctx, outline: LocalOutline, mask: NonNullable<ImageElement["mask"]>, w: number, h: number, k: number): void {
+  const m = document.createElement("canvas");
+  m.width = o.canvas.width;
+  m.height = o.canvas.height;
+  const mc = m.getContext("2d")!;
+  mc.scale(k, k);
+  mc.fillStyle = "#000";
+  const path = outlinePath(outline);
+  const blur = mask.feather > 0 && supportsFilter ? `blur(${(mask.feather * k) / 2}px)` : "none";
+  if (mask.invert) {
+    mc.fillRect(0, 0, w, h);
+    mc.globalCompositeOperation = "destination-out";
+  }
+  mc.filter = blur;
+  mc.fill(path);
+  o.save();
+  o.setTransform(1, 0, 0, 1, 0, 0);
+  o.globalCompositeOperation = "destination-in";
+  o.drawImage(m, 0, 0);
+  o.restore();
+}
+
 function drawImageElement(ctx: Ctx, el: ImageElement, assets: Map<string, AssetRecord>, opts: RenderOptions, parentAlpha: number): void {
   const asset = el.assetId ? assets.get(el.assetId) : undefined;
   if (!asset) {
@@ -332,7 +370,8 @@ function drawImageElement(ctx: Ctx, el: ImageElement, assets: Map<string, AssetR
   const adj = el.adjustments;
   const wantsFilter = !isProtected && supportsFilter && (adj.brightness !== 100 || adj.contrast !== 100 || adj.saturation !== 100);
   const f = el.fade;
-  const needsOffscreen = el.cornerRadius > 0 || f.left > 0 || f.right > 0 || f.top > 0 || f.bottom > 0 || wantsFilter;
+  const outline = el.mask ? maskOutlineLocal(el, asset.width, asset.height) : null;
+  const needsOffscreen = el.cornerRadius > 0 || f.left > 0 || f.right > 0 || f.top > 0 || f.bottom > 0 || wantsFilter || !!outline;
   const filter = wantsFilter ? `brightness(${adj.brightness}%) contrast(${adj.contrast}%) saturate(${adj.saturation}%)` : "none";
 
   if (!needsOffscreen) {
@@ -354,6 +393,14 @@ function drawImageElement(ctx: Ctx, el: ImageElement, assets: Map<string, AssetR
     if (wantsFilter) o.filter = filter;
     o.drawImage(resolved.source, src.x, src.y, src.w, src.h, plan.dx, plan.dy, plan.dw, plan.dh);
     o.filter = "none";
+    if (outline && opts.maskEditId === el.id) {
+      // Ghost of the masked-out area while the mask is being edited.
+      ctx.save();
+      ctx.globalAlpha = 0.3;
+      ctx.drawImage(off, 0, 0, el.width, el.height);
+      ctx.restore();
+    }
+    if (outline) applyMask(o, outline, el.mask!, el.width, el.height, ow / el.width);
     applyFades(o, el.width, el.height, f);
     applyShadow(ctx, el, opts.pixelRatio);
     ctx.drawImage(off, 0, 0, el.width, el.height);

@@ -65,4 +65,22 @@ Montserrat and Inter (variable, full weight range with italics) are bundled as W
 
 ## D9 — Repository and hosting
 
-Development happens in a non-Drive working copy (npm installs corrupt on Google Drive); the Drive folder is a source mirror. Git branches follow `feature/* → dev → main`. No GitHub remote or hosting has been created yet. Per the fleet's migration plan, hosting would be static assets on Cloudflare Workers, and that needs a separate go-ahead.
+Development happens in a non-Drive working copy (npm installs corrupt on Google Drive); the Drive folder is a source mirror. Git branches follow `feature/* → dev → main`. The public repository is github.com/TheBooleanJulian/accurova-graphene. `demo/` (the BNI source photos and reference artwork) is committed with the owner's approval. No hosting has been set up; per the fleet's migration plan it would be static assets on Cloudflare Workers, and that needs a separate go-ahead.
+
+## D10 — Masking tools (2026-11-20)
+
+**Goal:** cut supplied photos into separate layers (the spec's studio composite: backdrop, subject, softbox/lights, DSLR on tripod) without editing a single original pixel.
+
+**Model.** An image element has an optional `mask` (`src/model/types.ts`): `shape` is `rect`, `ellipse` or `polygon`, with `points`, `feather` (document px) and `invert`. This is an additive field in schema v1: older projects load with `mask: null`, and invalid masks are dropped with a warning.
+
+**Points are in normalised source-image coordinates, not frame coordinates.** A mask drawn around a person stays on that person when the photo is re-cropped, panned in crop mode, resized from an edge, rotated or scaled. All conversions live in `src/model/mask.ts` (`sourceToLocal` / `localToSource` through the frame's draw plan) and are unit-tested.
+
+**One shape per layer.** To split a photo, duplicate it in place and give each copy its own mask. Every copy points at the same stored original. A polygon with a hole is expressed as a single keyhole polygon (the sample's backdrop has its subject cut out this way), so the format stays one simple ring.
+
+**Rendering.** Masks go through the same offscreen pass as corner radius and fades: draw the image, then apply `destination-in` with the shape filled on a separate canvas, blurred by `ctx.filter` for feather (hard edge where the browser has no canvas filter). Export uses the same renderer, so masks export exactly as shown.
+
+**Interaction.** A mask-edit mode on the canvas: rectangle and ellipse start as a centred shape with corner handles; polygon is click-to-place (close on the first point, double-click or Enter); lasso is freehand, simplified with Ramer–Douglas–Peucker to about 1.5 screen px. Vertex drag, midpoint insert and Alt+click delete edit polygons, and dragging inside moves the whole mask. Hit-testing respects masks, so stacked cut-outs of one photo stay individually clickable. "Fit frame to mask" shrinks the frame to the cut-out's bounds without moving the image on the canvas.
+
+**Integrity.** Masks are allowed on Protected assets; the spec lists masking among the permitted non-destructive operations.
+
+**Not included:** multiple shapes per mask, Bézier curves, brush/eraser painting, and automatic subject selection. Automatic selection is AI background removal, planned for Phase 3 with approval.

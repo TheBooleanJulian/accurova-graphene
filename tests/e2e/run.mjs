@@ -147,16 +147,20 @@ try {
       ok((await js(`${G}.storedHash(${JSON.stringify(a.hash)})`)) === expected, `${f.originalName}: stored bytes hash to the original`);
       ok(a.integrity === "protected", `${f.originalName} defaults to Protected`);
     }
-    const studio = assets.find((x) => x.name.startsWith("ChatGPT"));
-    ok(studio.provenance === "unknown", "the ChatGPT-named studio file is flagged for provenance confirmation");
+    const studio = assets.find((x) => x.name === "original_background.png");
+    ok(studio && studio.provenance === "original", "the studio photo (original_background.png) imports as an Original");
   });
 
   await step("Sample has no clipped text and no stretched images", async () => {
     const r = await js(`${G}.integrityReport()`);
     ok(r.overflow.length === 0, `text fits its boxes (overflowing: ${r.overflow.join(", ")})`);
     ok(r.stretched.length === 0, `images keep their proportions (stretched: ${r.stretched.join(", ")})`);
-    const studio = await byName("Studio photograph (backdrop, subject, softbox, DSLR on tripod)");
-    ok(studio.visible && studio.assetId, "studio photo with the DSLR and tripod is placed and visible");
+    for (const name of ["Studio backdrop", "Brown-jacket subject", "Studio softbox / lights", "DSLR on tripod"]) {
+      const layer = await byName(name);
+      ok(layer && layer.visible && layer.assetId && layer.mask, `"${name}" is a visible, masked layer of the studio photo`);
+    }
+    const ids = new Set((await js(`${G}.byName("Studio composite")`)).children.map((c) => c.assetId));
+    ok(ids.size === 1, "all four studio layers show the same original file");
   });
 
   let pose;
@@ -271,6 +275,119 @@ try {
     await b.key("z", CTRL);
   });
 
+  await step("Masked studio layers are selected only where they show", async () => {
+    await b.key("Escape");
+    await b.key("Escape");
+    const at = (name, x, y) => js(`${G}.clientOfSource(${JSON.stringify(name)}, ${x / 2048}, ${y / 1536})`);
+    const pick = async (p) => {
+      await b.click(p.x, p.y, { modifiers: CTRL });
+      return (await state("s.selection"))[0] ?? null;
+    };
+    const dslr = await byName("DSLR on tripod");
+    const subject = await byName("Brown-jacket subject");
+    const backdrop = await byName("Studio backdrop");
+    ok((await pick(await at("DSLR on tripod", 470, 1050))) === dslr.id, "clicking the camera body selects the DSLR layer");
+    ok((await pick(await at("Brown-jacket subject", 1200, 650))) === subject.id, "clicking the jacket selects the subject");
+    ok((await pick(await at("Studio backdrop", 1350, 800))) === backdrop.id, "clicking the paper selects the backdrop");
+    ok((await pick(await at("DSLR on tripod", 680, 1000))) !== dslr.id, "clicks outside the DSLR cut-out pass through it");
+    await b.key("Escape");
+  });
+
+  await step("Rectangle mask: draw, resize, feather, invert, remove, undo", async () => {
+    const c = await centerOf("Portrait 03 photo");
+    await b.click(c.x, c.y, { modifiers: CTRL });
+    await clickTestId("mask-tool-rect");
+    let el = await byName("Portrait 03 photo");
+    ok(el.mask && el.mask.shape === "rect", "rectangle mask created");
+    ok((await state("s.maskEdit?.id")) === el.id, "mask editing started");
+    const before = el.mask.points;
+    const h = await rectOf('[data-testid="mask-corner-se"]');
+    await b.drag(h.x, h.y, h.x - 15, h.y - 25);
+    el = await byName("Portrait 03 photo");
+    ok(el.mask.points[1].y < before[1].y && el.mask.points[1].x < before[1].x, "corner drag resizes the mask");
+    await js(`(() => { const i = document.querySelector('[data-testid="mask-feather"]'); const set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set; set.call(i, '20'); i.dispatchEvent(new Event('input', { bubbles: true })); })()`);
+    ok((await byName("Portrait 03 photo")).mask.feather === 20, "feather slider sets the softness");
+    await js(`[...document.querySelectorAll('[data-testid="inspector"] .toggle')].find((t) => t.textContent.includes('Invert')).querySelector('input').click()`);
+    ok((await byName("Portrait 03 photo")).mask.invert === true, "invert toggles");
+    await js(`[...document.querySelectorAll('[data-testid="inspector"] .toggle')].find((t) => t.textContent.includes('Invert')).querySelector('input').click()`);
+    await sleep(300);
+    await b.screenshot(join(out, "08-mask-rect.png"));
+    await clickTestId("mask-remove");
+    ok((await byName("Portrait 03 photo")).mask === null, "remove clears the mask");
+    await b.key("z", CTRL);
+    ok((await byName("Portrait 03 photo")).mask?.feather === 20, "undo restores the mask");
+    await b.key("Escape");
+    ok((await state("s.maskEdit")) === null, "Escape leaves mask editing");
+  });
+
+  await step("Polygon mask: click points, close, drag and delete vertices", async () => {
+    await b.key("Escape");
+    const c = await centerOf("Portrait 01 photo");
+    await b.click(c.x, c.y, { modifiers: CTRL });
+    await clickTestId("mask-tool-polygon");
+    ok((await state("s.maskEdit?.drawing")) === true, "polygon tool is drawing");
+    const el0 = await byName("Portrait 01 photo");
+    const zoom = await state("s.view.zoom");
+    const dx = (el0.width * zoom) / 3;
+    const dy = (el0.height * zoom) / 3;
+    const pts = [
+      { x: c.x - dx, y: c.y - dy },
+      { x: c.x + dx, y: c.y - dy },
+      { x: c.x + dx, y: c.y + dy },
+      { x: c.x - dx, y: c.y + dy },
+    ];
+    for (const p of pts) await b.click(p.x, p.y);
+    ok((await state("s.maskDraft.length")) === 4, "four points placed");
+    await b.screenshot(join(out, "09-mask-polygon-drawing.png"));
+    await b.click(pts[0].x, pts[0].y); // click the first point to close
+    let el = await byName("Portrait 01 photo");
+    ok(el.mask?.shape === "polygon" && el.mask.points.length === 4, `closed polygon with 4 points (got ${el.mask?.points.length})`);
+    ok((await state("s.maskEdit.drawing")) === false, "now editing points");
+    const v0 = await rectOf('[data-testid="mask-vertex"]');
+    await b.drag(v0.x, v0.y, v0.x + 8, v0.y + 12);
+    el = await byName("Portrait 01 photo");
+    ok(el.mask.points[0].x > 0 && el.mask.points.length === 4, "vertex dragged");
+    const v1 = await js(`(() => { const r = document.querySelectorAll('[data-testid="mask-vertex"]')[1].getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`);
+    await b.click(v1.x, v1.y, { modifiers: 1 }); // Alt+click deletes
+    ok((await byName("Portrait 01 photo")).mask.points.length === 3, "Alt+click removes a vertex");
+    await b.key("z", CTRL);
+    ok((await byName("Portrait 01 photo")).mask.points.length === 4, "undo restores it");
+    await b.screenshot(join(out, "10-mask-polygon-editing.png"));
+    await b.key("Enter");
+    ok((await state("s.maskEdit")) === null, "Enter finishes editing");
+    await b.key("Escape"); // deselect so no resize handle sits over the probe point
+    const outside = await js(`${G}.toClient(${el.x + el.width * 0.1}, ${el.y + el.height * 0.3})`);
+    await b.click(outside.x, outside.y, { modifiers: CTRL });
+    ok((await state("s.selection"))[0] !== el.id, "the masked-out corner is click-through");
+  });
+
+  await step("Freehand lasso mask, then fit the frame to it", async () => {
+    await b.key("Escape");
+    const c = await centerOf("Portrait 02 photo");
+    await b.click(c.x, c.y, { modifiers: CTRL });
+    await clickTestId("mask-tool-lasso");
+    const r = 22;
+    const stroke = Array.from({ length: 49 }, (_, i) => ({ x: c.x + r * Math.cos((i / 48) * Math.PI * 2), y: c.y - 10 + r * 1.4 * Math.sin((i / 48) * Math.PI * 2) }));
+    await b.path(stroke);
+    const el = await byName("Portrait 02 photo");
+    ok(el.mask?.shape === "polygon" && el.mask.points.length >= 8 && el.mask.points.length < 49, `lasso simplified to ${el.mask?.points.length} points`);
+    const n = el.mask.points.length;
+    const probe = { x: el.mask.points.reduce((t, q) => t + q.x, 0) / n, y: el.mask.points.reduce((t, q) => t + q.y, 0) / n }; // centroid
+    const before = await js(`${G}.clientOfSource("Portrait 02 photo", ${probe.x}, ${probe.y})`);
+    await clickTestId("mask-fit-frame");
+    const fitted = await byName("Portrait 02 photo");
+    ok(fitted.width < el.width && fitted.height < el.height, "frame shrank to the cut-out");
+    const after = await js(`${G}.clientOfSource("Portrait 02 photo", ${probe.x}, ${probe.y})`);
+    near(after.x, before.x, 0.01, "photo did not move horizontally");
+    near(after.y, before.y, 0.01, "photo did not move vertically");
+    ok((await js(`${G}.integrityReport()`)).stretched.length === 0, "still no stretching");
+    await b.key("z", CTRL);
+    await b.key("z", CTRL);
+    ok((await byName("Portrait 02 photo")).mask === null, "undo removes the fit and the lasso mask");
+    await b.key("Escape");
+    await b.key("Escape");
+  });
+
   await step("Edit text in place; undo restores the wording", async () => {
     const c = await centerOf("Fast and Easy");
     await b.click(c.x, c.y, { modifiers: CTRL });
@@ -335,8 +452,8 @@ try {
     const studioRow = `[data-testid="layer-row"][data-layer-name="Studio composite"]`;
     await js(`document.querySelector('${studioRow} [data-testid="layer-lock"]').click()`);
     ok((await byName("Studio composite")).locked === true, "lock button locks the layer");
-    const sc = await centerOf("Studio photograph (backdrop, subject, softbox, DSLR on tripod)");
-    await b.click(sc.x + 40, sc.y + 120);
+    const sc = await js(`${G}.clientOfSource("Brown-jacket subject", 0.586, 0.42)`);
+    await b.click(sc.x, sc.y);
     const sel = await state("s.selection");
     const studio = await byName("Studio composite");
     ok(!sel.includes(studio.id), "locked layers are click-through on the canvas");
@@ -391,6 +508,7 @@ try {
     await b.navigate(URL_);
     await b.waitFor(`!!${G} && !!${G}.getState().doc && ${G}.imagesReady()`, { timeout: 120000, label: "project reopened" });
     ok(!!(await byName("Session footer")), "rename persisted");
+    ok((await byName("Portrait 03 photo")).mask?.shape === "rect", "masks persisted");
     const count2 = await state("(() => { let n = 0; const v = (l) => l.forEach((e) => { n++; if (e.children) v(e.children); }); v(s.doc.elements); return n; })()");
     ok(count2 === count, `same number of layers after reload (${count2} vs ${count})`);
     ok((await state("s.doc.assets")).length === 8, "assets persisted");
@@ -456,6 +574,7 @@ try {
     await b.waitFor(`${G}.imagesReady()`, { timeout: 120000, label: "imported images" });
     ok((await state("s.doc.assets")).length === 8, "imported with all assets");
     ok(!!(await byName("Session footer")), "imported design matches");
+    ok((await byName("DSLR on tripod")).mask?.points.length > 10, "masks survive the package round trip");
   });
 
   await step("Preview mode hides the editor UI", async () => {

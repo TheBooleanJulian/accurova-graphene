@@ -4,12 +4,14 @@
 import { isHexColor, normalizeHex } from "./color.ts";
 import { sanitizeCrop, FULL_CROP } from "./image.ts";
 import { syncGroupBounds } from "./ops.ts";
+import { MASK_LIMITS, isUsableMask } from "./mask.ts";
 import type {
   AssetRecord,
   AssetSlot,
   Element,
   Fill,
   GrapheneDocument,
+  ImageMask,
   Integrity,
   Provenance,
   Shadow,
@@ -71,6 +73,21 @@ function shadow(v: unknown): Shadow | null {
     offsetX: num(v.offsetX, 0),
     offsetY: num(v.offsetY, 4),
   };
+}
+
+function imageMask(v: unknown, ctx: Ctx, path: string): ImageMask | null {
+  if (!isObj(v)) return null;
+  const shape = oneOf(v.shape, ["rect", "ellipse", "polygon"] as const, "polygon");
+  const points = (Array.isArray(v.points) ? v.points : [])
+    .filter(isObj)
+    .slice(0, MASK_LIMITS.maxPoints)
+    .map((p) => ({ x: num(p.x, 0, -1, 2), y: num(p.y, 0, -1, 2) }));
+  const mask: ImageMask = { shape, points: shape === "polygon" ? points : points.slice(0, 2), feather: num(v.feather, 0, 0, 1000), invert: bool(v.invert, false) };
+  if (!isUsableMask(mask)) {
+    ctx.warnings.push(`${path}: mask has too few points and was removed`);
+    return null;
+  }
+  return mask;
 }
 
 interface Ctx {
@@ -164,6 +181,7 @@ function element(v: unknown, ctx: Ctx, path: string, depth: number): Element | n
         }),
         cornerRadius: num(v.cornerRadius, 0, 0, 1e5),
         fade: { left: num(f.left, 0, 0, 1e5), right: num(f.right, 0, 0, 1e5), top: num(f.top, 0, 0, 1e5), bottom: num(f.bottom, 0, 0, 1e5) },
+        mask: imageMask(v.mask, ctx, path),
         adjustments: {
           brightness: num(adj.brightness, 100, 0, 300),
           contrast: num(adj.contrast, 100, 0, 300),

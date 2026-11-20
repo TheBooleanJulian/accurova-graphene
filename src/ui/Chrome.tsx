@@ -4,6 +4,8 @@ import { findById, isLockedInTree } from "../model/tree.ts";
 import { storageEstimate } from "../persist/db.ts";
 import { formatBytes } from "../persist/sniff.ts";
 import {
+  editMask,
+  startMaskTool,
   copySelection,
   cutSelection,
   deleteSelection,
@@ -64,6 +66,7 @@ export function ContextMenu() {
         <>
           {single?.type === "text" && item("Edit text", () => setState({ editingTextId: single.id }), { kbd: "Enter", disabled: anyLocked })}
           {single?.type === "image" && single.assetId && item("Crop / reposition", () => setState({ cropId: single.id }), { kbd: "Enter", disabled: anyLocked })}
+          {single?.type === "image" && single.assetId && item(single.mask ? "Edit mask" : "Add mask", () => (single.mask ? editMask(single.id) : startMaskTool(single.id, "polygon")), { disabled: anyLocked })}
           {single?.type === "image" && item(single.assetId ? "Replace image…" : "Choose image…", () => void pickFileForFrame(single.id), { disabled: anyLocked })}
           {single?.type === "group" && item("Edit inside group", () => setState({ enteredGroup: single.id, selection: [] }), { kbd: "Enter" })}
           <hr />

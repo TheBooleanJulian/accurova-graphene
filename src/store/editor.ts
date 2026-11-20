@@ -34,6 +34,15 @@ export interface Toast {
   body?: string;
 }
 
+export type MaskTool = "rect" | "ellipse" | "polygon" | "lasso";
+
+/** Mask editing on one image: either drawing a new shape with a tool, or editing the existing mask's points. */
+export interface MaskEdit {
+  id: string;
+  tool: MaskTool;
+  drawing: boolean;
+}
+
 export interface View {
   zoom: number;
   panX: number;
@@ -52,6 +61,9 @@ export interface EditorState {
   viewport: { width: number; height: number };
   editingTextId: string | null;
   cropId: string | null;
+  maskEdit: MaskEdit | null;
+  /** Shape being drawn, in normalised source coordinates of the image. */
+  maskDraft: { x: number; y: number }[] | null;
   guides: { xs: number[]; ys: number[] };
   showGrid: boolean;
   snapping: boolean;
@@ -77,6 +89,8 @@ let state: EditorState = {
   viewport: { width: 800, height: 600 },
   editingTextId: null,
   cropId: null,
+  maskEdit: null,
+  maskDraft: null,
   guides: { xs: [], ys: [] },
   showGrid: false,
   snapping: true,
@@ -181,7 +195,15 @@ export function cancelGesture(): void {
 function restore(doc: GrapheneDocument, history: History<GrapheneDocument>): void {
   const d = derive(doc);
   const ids = allIds(d.elements);
-  setState({ doc: d, history, selection: state.selection.filter((id) => ids.has(id)), editingTextId: null, cropId: null });
+  setState({
+    doc: d,
+    history,
+    selection: state.selection.filter((id) => ids.has(id)),
+    editingTextId: null,
+    cropId: null,
+    maskDraft: null,
+    maskEdit: state.maskEdit && ids.has(state.maskEdit.id) ? { ...state.maskEdit, drawing: false } : null,
+  });
   scheduleSave();
 }
 
@@ -208,6 +230,8 @@ export function openDocument(doc: GrapheneDocument): void {
     enteredGroup: null,
     editingTextId: null,
     cropId: null,
+    maskEdit: null,
+    maskDraft: null,
     dialog: null,
     preview: false,
     save: { status: "saved", savedAt: Date.now(), error: null },

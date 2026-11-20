@@ -46,10 +46,16 @@
 - Touch and tablet input: the layout adapts, but touch gestures were not tested.
 - Very large projects (hundreds of layers or dozens of 45 MP photos): not profiled.
 
+## Masking tools (complete, 2026-11-20)
+
+Rectangle, ellipse, polygon and freehand masks with feather, invert, fit-frame-to-mask and duplicate-in-place (design in [DECISIONS.md D10](DECISIONS.md)). The BNI sample now builds the studio composite as the spec's four separately selectable layers, all cut from the one supplied photo (`demo/original_background.png`, renamed from the ChatGPT-named file and confirmed Original by the owner).
+
+Verified: `npm test` passes 49 unit tests, including coordinate round trips, masks following crops and pans, fit-frame keeping the photo fixed, simplification, validation and feather scaling. `npm run test:e2e` passes 28 workflows. The new ones are: mask-aware selection of the four studio layers; a rectangle mask drawn, resized, feathered, inverted, removed and undone; a polygon drawn by clicks, with vertex drag, Alt+click delete and undo; a freehand lasso plus fit-frame-to-mask; masks surviving reload and the package round trip. The sample and 2× export were also inspected by eye.
+
 ## Known limitations
 
-- **Studio composite is a single photo layer.** The spec's tree splits it into backdrop, subject, softbox and DSLR layers. True cut-outs need freeform masks or background removal (AI-assisted, Phase 3). Phase 1 offers rectangular crops, rounded corners and soft edge fades, and the sample uses one faded studio layer that keeps the DSLR and tripod visible.
-- **Masks** are limited to crop, corner radius and edge fade; there are no shape or freeform masks yet.
+- **Studio cut-outs are hand-traced polygons** with a 1–2 px feather. A faint seam can show where the subject meets the backdrop's cut-out; refine it with the vertex tools. Automatic subject selection (background removal) is Phase 3.
+- **Masks** are one shape per layer (holes via keyhole polygons), with straight polygon edges only (no Béziers) and no brush painting. Feather needs canvas `filter` (Chromium, Firefox); elsewhere edges are hard.
 - **Gradients** are linear only. Text fills are solid colour only.
 - **Rotated groups:** rotating a group rotates its children about the group centre; afterwards the group's selection box is axis-aligned rather than rotated.
 - **Text editing** uses a textarea overlay styled like the text. Paragraph spacing is not shown while typing, and wrapping can differ from the canvas by a pixel or two until editing ends.

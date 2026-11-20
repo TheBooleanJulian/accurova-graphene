@@ -5,10 +5,9 @@ dist/
 .env.*
 !.env.example
 
-# Client photography and reference artwork. These are real people's photos:
-# keep them out of git. `npm run sample:prepare` copies them into public/samples
-# for local use only.
-demo/
+# demo/ (the BNI Crescendo source photos and reference artwork) IS committed,
+# with the owner's approval. `npm run sample:prepare` copies it into
+# public/samples, which stays ignored to avoid a second copy in git.
 public/samples/*/assets/
 
 # Test output
