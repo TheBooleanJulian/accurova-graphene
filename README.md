@@ -15,6 +15,8 @@ npm install
 npm run dev            # http://localhost:5190
 ```
 
+**Live:** https://graphene.accurova.com, which auto-deploys from `main`.
+
 Everything runs in the browser. There is no server, no account and no AI call. Projects and original files are saved in the browser's IndexedDB.
 
 ### The reference sample (BNI Crescendo banner)
@@ -75,6 +77,14 @@ scripts/      icon generation, sample preparation
 tests/e2e/    CDP driver and workflow test
 docs/         DECISIONS.md (architecture), PROGRESS.md (status, limitations)
 ```
+
+## Deployment and CI
+
+- **Hosting:** Cloudflare Workers static assets on the accurova account, at the custom domain `graphene.accurova.com` (`wrangler.jsonc`). There is no server code, binding or secret.
+- **Auto-deploy:** Cloudflare Workers Builds runs on every push to `main`: `npm ci && npm run sample:prepare && npm run build`, then `npx wrangler deploy`. The deployed site includes the BNI sample photos from `demo/`.
+- **CI:** GitHub Actions (`.github/workflows/ci.yml`) runs on pushes and PRs. It does the typecheck, production build and unit tests, then the full end-to-end suite in headless Chrome, and uploads screenshots as an artifact.
+- **Manual deploy** (if ever needed): `npm run sample:prepare && npm run build && npx wrangler deploy` from a non-Drive clone.
+- **Expected check failure:** the Workers Builds GitHub check fails on feature/dev PRs and succeeds on `main`. It is the same for the fleet's other Workers sites; judge the `main` build.
 
 ## Configuration
 

@@ -52,6 +52,13 @@ Rectangle, ellipse, polygon and freehand masks with feather, invert, fit-frame-t
 
 Verified: `npm test` passes 49 unit tests, including coordinate round trips, masks following crops and pans, fit-frame keeping the photo fixed, simplification, validation and feather scaling. `npm run test:e2e` passes 28 workflows. The new ones are: mask-aware selection of the four studio layers; a rectangle mask drawn, resized, feathered, inverted, removed and undone; a polygon drawn by clicks, with vertex drag, Alt+click delete and undo; a freehand lasso plus fit-frame-to-mask; masks surviving reload and the package round trip. The sample and 2× export were also inspected by eye.
 
+## Deployment and CI (2026-11-20)
+
+- Live at https://graphene.accurova.com (Cloudflare Workers static assets). Verified: the site serves over HTTPS with immutable caching for hashed assets; the full BNI sample loads in a real browser from the production build; no dev hook and no console errors.
+- Workers Builds trigger on `main` (build: `npm ci && npm run sample:prepare && npm run build`, deploy: `npx wrangler deploy`).
+- GitHub Actions CI: typecheck, build and unit tests, plus the end-to-end suite in headless Chrome.
+- Fixed: the welcome screen's sample button could open "map your files" instead of loading the photos when clicked before the sample check finished.
+
 ## Known limitations
 
 - **Studio cut-outs are hand-traced polygons** with a 1–2 px feather. A faint seam can show where the subject meets the backdrop's cut-out; refine it with the vertex tools. Automatic subject selection (background removal) is Phase 3.
