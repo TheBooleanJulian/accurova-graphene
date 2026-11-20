@@ -1,0 +1,55 @@
+name: CI
+
+on:
+  push:
+    branches: [main, dev, "feature/**"]
+  pull_request:
+    branches: [main, dev]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-test:
+    name: Typecheck, build, unit tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .node-version
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - run: npm test
+
+  e2e:
+    name: End-to-end workflows (headless Chrome)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .node-version
+          cache: npm
+      - run: npm ci
+      - run: npm run sample:prepare
+      - run: npm run test:e2e
+        env:
+          GRAPHENE_BROWSER: /usr/bin/google-chrome
+      - name: Upload screenshots and exports
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: e2e-output
+          path: |
+            tests/e2e/out/*.png
+            tests/e2e/out/*.jpg
+          if-no-files-found: ignore
+          retention-days: 7
