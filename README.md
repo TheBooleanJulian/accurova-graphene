@@ -22,7 +22,7 @@ Everything runs in the browser. There is no server, no account and no AI call. P
 The sample is a template with every designed element as an editable layer, plus seven named **asset slots** (logo, event room photo, studio photo, four portraits). Two ways to fill them:
 
 - **Map your own files**: *Templates → Open and map my files*, then choose a file for each slot. Graphene never guesses which photo is which.
-- **Use the supplied demo files**: put them in `demo/` (git-ignored; they are client photographs), then:
+- **Use the supplied demo files** (in `demo/`, committed with the owner's approval):
 
   ```bash
   npm run sample:prepare      # copies demo/ → public/samples/bni-crescendo/assets (git-ignored)
@@ -39,6 +39,8 @@ npm run build          # typecheck + production build into dist/
 npm run sample:prepare && npm run test:e2e   # end-to-end workflows in headless Edge/Chrome
 ```
 
+`node tests/e2e/snapshot.mjs` (with the dev server running) saves sample screenshots for a visual check.
+
 `test:e2e` starts Vite if needed, drives the real editor with real mouse and keyboard input over the Chrome DevTools Protocol, and writes screenshots and exported files to `tests/e2e/out/`. Set `GRAPHENE_BROWSER` to a browser executable if Edge/Chrome is not in a standard location, and `HEADED=1` to watch it run.
 
 ## What it does (Phase 1)
@@ -47,6 +49,7 @@ npm run sample:prepare && npm run test:e2e   # end-to-end workflows in headless 
 |---|---|
 | Canvas | Custom size and presets (banner, social, print @300 dpi); resize later without stretching anything; zoom, pan, fit; grid; margin / safe-area guide; solid, gradient or transparent background |
 | Images | PNG, JPEG, WebP, SVG upload (content-sniffed, 60 MB limit, SVG sanitised); originals stored byte-for-byte with a SHA-256; fill/fit modes that **cannot stretch**; non-destructive crop and reposition; edge resizing reveals more of the photo; corner radius and soft edge fade masks; replace image keeping the frame; provenance (Original / Unverified / AI-generated) and integrity (Protected / Editable / AI-editable / Generated) on every asset; resolution check |
+| Masks | Rectangle, ellipse, click-polygon and freehand lasso masks on any photo; drag vertices, insert at midpoints, Alt+click to delete, move the whole mask; feather and invert; "Fit frame to mask"; "Duplicate in place" to cut one photo into several layers. Masks are stored in the photo's own coordinates, so they stay on the subject through crops and resizes, and clicks pass through masked-out areas. Allowed on Protected assets: they hide pixels, never change them |
 | Text | Editable text boxes that grow with their content (no clipping); presets; Montserrat and Inter (bundled, full weights, italics) plus UI fonts; size, weight, italic, colour, alignment, line height, letter spacing, paragraph spacing, caps, outline; overflow warning |
 | Shapes & icons | Rectangle, rounded rectangle, ellipse, polygon, star, slanted ribbon, callout, line, arrow; solid or gradient fill, stroke, corner radius, shadow. Searchable library of ~2,100 recolourable Lucide outline icons |
 | Layers | Tree panel: reorder by drag (including into and out of groups), rename, hide, lock, multi-select; group/ungroup; z-order; click-through for locked layers; double-click to enter a group |

@@ -148,6 +148,7 @@ export function createImageElement(asset: AssetRecord, cx: number, cy: number, m
     crop: coverCrop(asset.width, asset.height, width / height),
     cornerRadius: 0,
     fade: { left: 0, right: 0, top: 0, bottom: 0 },
+    mask: null,
     adjustments: { brightness: 100, contrast: 100, saturation: 100 },
     stroke: null,
   };
@@ -165,6 +166,7 @@ export function createEmptyFrame(name: string, x: number, y: number, width: numb
     crop: { ...FULL_CROP },
     cornerRadius: 0,
     fade: { left: 0, right: 0, top: 0, bottom: 0 },
+    mask: null,
     adjustments: { brightness: 100, contrast: 100, saturation: 100 },
     stroke: null,
   };

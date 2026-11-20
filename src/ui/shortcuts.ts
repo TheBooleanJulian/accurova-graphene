@@ -1,6 +1,8 @@
 // Global keyboard shortcuts. Ignored while typing in a field (except Escape).
 import { findById } from "../model/tree.ts";
 import {
+  applyMaskShape,
+  exitMaskEdit,
   copySelection,
   cutSelection,
   deleteSelection,
@@ -29,6 +31,7 @@ export function installShortcuts(): () => void {
       if (s.contextMenu) return setState({ contextMenu: null });
       if (s.dialog) return; // the dialog handles its own Escape
       if (s.preview) return setState({ preview: false });
+      if (s.maskEdit) return s.maskDraft ? setState({ maskDraft: null }) : exitMaskEdit();
       if (s.cropId) return setState({ cropId: null });
       if (s.editingTextId) return;
       if (s.enteredGroup) return setState({ enteredGroup: null, selection: [s.enteredGroup] });
@@ -36,6 +39,19 @@ export function installShortcuts(): () => void {
       return;
     }
     if (isTyping(e.target) || s.dialog || !s.doc) return;
+
+    // Mask editing owns Enter / Backspace / Delete so they never delete the layer.
+    if (s.maskEdit && (key === "Enter" || key === "Backspace" || key === "Delete")) {
+      e.preventDefault();
+      const draft = s.maskDraft;
+      if (key === "Enter") {
+        if (s.maskEdit.drawing && s.maskEdit.tool === "polygon" && draft && draft.length >= 3) applyMaskShape(s.maskEdit.id, "polygon", draft);
+        else exitMaskEdit();
+      } else if (draft?.length) {
+        setState({ maskDraft: draft.length > 1 ? draft.slice(0, -1) : null });
+      }
+      return;
+    }
 
     const lower = key.toLowerCase();
     if (mod && lower === "z") {

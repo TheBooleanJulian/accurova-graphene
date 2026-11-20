@@ -142,6 +142,23 @@ export interface Adjustments {
 
 export type ImageFit = "cover" | "contain";
 
+export type MaskShape = "rect" | "ellipse" | "polygon";
+
+/**
+ * A non-destructive mask. Points are in normalised SOURCE image coordinates
+ * (0..1 of the original asset, may extend beyond), so the mask follows the
+ * photo through crops and frame changes. rect/ellipse use two opposite corners;
+ * polygon uses its vertices.
+ */
+export interface ImageMask {
+  shape: MaskShape;
+  points: { x: number; y: number }[];
+  /** Edge softness in document px. */
+  feather: number;
+  /** Hide the inside of the shape instead of the outside. */
+  invert: boolean;
+}
+
 export interface ImageElement extends ElementBase {
   type: "image";
   /** null = an empty frame waiting for an asset. */
@@ -156,6 +173,8 @@ export interface ImageElement extends ElementBase {
   cornerRadius: number;
   /** Non-destructive soft mask on each edge, px. */
   fade: EdgeFade;
+  /** Shape mask (cut-out), or null. */
+  mask: ImageMask | null;
   /** Non-destructive display adjustments. Ignored while the asset is protected. */
   adjustments: Adjustments;
   stroke: Stroke | null;

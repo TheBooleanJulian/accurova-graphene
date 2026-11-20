@@ -27,7 +27,9 @@ import { importAssetFile } from "../persist/assets.ts";
 import { loadDoc, saveDoc } from "../persist/db.ts";
 import { BNI_SLOTS, SAMPLE_ASSET_BASE, buildBniCrescendo, type SampleManifest } from "../samples/bniCrescendo.ts";
 import { loadIconCatalog } from "../icons/catalog.ts";
-import { commit, getState, openDocument, setState, toast } from "./editor.ts";
+import { commit, getState, openDocument, setState, toast, type MaskTool } from "./editor.ts";
+import { defaultBoxMask, fitFrameToMask, isUsableMask } from "../model/mask.ts";
+import type { ImageElement, ImageMask } from "../model/types.ts";
 
 // ---------------------------------------------------------------------------
 // Selection
@@ -260,6 +262,80 @@ export function placeAsset(asset: AssetRecord, at?: Point, targetFrameId?: strin
   const c = at ?? viewCenter();
   const el = createImageElement(asset, c.x, c.y, doc.project.width * 0.6, doc.project.height * 0.6);
   addAndSelect([el]);
+}
+
+// ---------------------------------------------------------------------------
+// Masks
+
+function imageWithAsset(id: string): { el: ImageElement; asset: AssetRecord } | null {
+  const doc = getState().doc;
+  const el = doc ? findById(doc.elements, id) : null;
+  if (!doc || el?.type !== "image" || !el.assetId) return null;
+  const asset = doc.assets.find((a) => a.id === el.assetId);
+  return asset ? { el, asset } : null;
+}
+
+/** Start drawing a new mask with a tool. Rectangles and ellipses start as a centred shape you can then adjust. */
+export function startMaskTool(id: string, tool: MaskTool): void {
+  const t = imageWithAsset(id);
+  if (!t) return;
+  setState({ cropId: null, editingTextId: null, selection: [id], maskDraft: null });
+  if ((tool === "rect" || tool === "ellipse") && !t.el.mask) {
+    const m = defaultBoxMask(t.el, t.asset.width, t.asset.height, tool);
+    commit((d) => updateElements(d, [id], (e) => ({ ...e, mask: m }) as Element));
+    setState({ maskEdit: { id, tool, drawing: false } });
+    return;
+  }
+  setState({ maskEdit: { id, tool, drawing: true } });
+}
+
+export function editMask(id: string): void {
+  const t = imageWithAsset(id);
+  if (!t?.el.mask) return;
+  setState({ cropId: null, editingTextId: null, selection: [id], maskDraft: null, maskEdit: { id, tool: t.el.mask.shape, drawing: false } });
+}
+
+export function exitMaskEdit(): void {
+  setState({ maskEdit: null, maskDraft: null });
+}
+
+/** Apply a newly drawn shape. Feather and invert carry over from the mask it replaces. */
+export function applyMaskShape(id: string, shape: ImageMask["shape"], points: { x: number; y: number }[]): boolean {
+  const t = imageWithAsset(id);
+  if (!t) return false;
+  // Drop consecutive duplicates (e.g. from a double-click that closes a polygon).
+  const clean = points.filter((p, i) => i === 0 || Math.hypot(p.x - points[i - 1].x, p.y - points[i - 1].y) > 1e-5);
+  const mask: ImageMask = { shape, points: clean, feather: t.el.mask?.feather ?? 0, invert: t.el.mask?.invert ?? false };
+  if (!isUsableMask(mask)) return false;
+  commit((d) => updateElements(d, [id], (e) => ({ ...e, mask }) as Element));
+  setState({ maskDraft: null, maskEdit: { id, tool: shape, drawing: false } });
+  return true;
+}
+
+export function updateMask(id: string, patch: Partial<ImageMask>, merge?: string): void {
+  commit((d) => updateElements(d, [id], (e) => (e.type === "image" && e.mask ? { ...e, mask: { ...e.mask, ...patch } } : e)), { merge });
+}
+
+export function removeMask(id: string): void {
+  commit((d) => updateElements(d, [id], (e) => (e.type === "image" ? { ...e, mask: null } : e)));
+  exitMaskEdit();
+}
+
+export function fitFrameToMaskAction(id: string): void {
+  const t = imageWithAsset(id);
+  if (!t) return;
+  commit((d) => updateElements(d, [id], (e) => (e.type === "image" ? fitFrameToMask(e, t.asset.width, t.asset.height) : e)));
+}
+
+/** Copy a layer exactly on top of itself — e.g. to cut one photo into several masked layers. */
+export function duplicateInPlace(id: string): void {
+  let newIds: string[] = [];
+  commit((d) => {
+    const r = duplicateElements(d, [id], 0);
+    newIds = r.newIds;
+    return r.doc;
+  });
+  setState({ selection: newIds });
 }
 
 export function fillSlot(slotId: string, asset: AssetRecord): void {

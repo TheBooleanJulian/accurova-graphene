@@ -127,6 +127,7 @@ function scaleDetails<T extends Element>(el: T, s: number): T {
         shadow,
         cornerRadius: el.cornerRadius * s,
         fade: { left: el.fade.left * s, right: el.fade.right * s, top: el.fade.top * s, bottom: el.fade.bottom * s },
+        mask: el.mask ? { ...el.mask, feather: el.mask.feather * s } : null,
         stroke: el.stroke ? { ...el.stroke, width: el.stroke.width * s } : null,
       };
     default:

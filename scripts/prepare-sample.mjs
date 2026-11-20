@@ -18,7 +18,7 @@ const out = join(root, "public/samples/bni-crescendo/assets");
 const MAP = [
   ["logo", "Accurova RTB Banner trans v1.png", "logo.png"],
   ["event", "Accurova_850_2984.jpg", "event-room.jpg"],
-  ["studio", "ChatGPT Image Nov 20, 2026, 04_14_19 PM.png", "studio.png"],
+  ["studio", "original_background.png", "studio.png"],
   ["portrait-1", "Accurova_850_6577_LR.jpg", "portrait-01.jpg"],
   ["portrait-2", "Accurova_850_6584_LR.jpg", "portrait-02.jpg"],
   ["portrait-3", "Accurova_850_6548_LR.jpg", "portrait-03.jpg"],

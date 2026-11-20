@@ -157,6 +157,11 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .locked-outline { fill: none; stroke: var(--ink-faint); stroke-width: 1; stroke-dasharray: 2 3; pointer-events: none; }
 .guide { stroke: var(--magenta); stroke-width: 1; pointer-events: none; }
 .marquee { fill: var(--cyan-tint); stroke: var(--cyan); stroke-width: 1; pointer-events: none; }
+.mask-outline { fill: rgba(255, 43, 214, 0.08); stroke: var(--magenta); stroke-width: 1.5; stroke-dasharray: 6 4; pointer-events: none; }
+.mask-draft { fill: none; stroke: var(--magenta); stroke-width: 1.5; pointer-events: none; }
+.mask-vertex { fill: #ffffff; stroke: var(--magenta); stroke-width: 1.5; cursor: move; }
+.mask-vertex--close { fill: var(--magenta); }
+.mask-mid { fill: var(--magenta); fill-opacity: 0.55; stroke: #ffffff; stroke-width: 1; cursor: copy; }
 .crop-outline { fill: none; stroke: var(--cyan); stroke-width: 2; pointer-events: none; }
 .size-tag { font: 500 11px/1 var(--font-mono); fill: var(--on-accent); }
 .size-tag-bg { fill: var(--cyan); }

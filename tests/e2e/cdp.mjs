@@ -144,6 +144,20 @@ export async function launch({ width = 1600, height = 1000, headless = true, por
     await sleep(50);
   }
 
+  /** Press at the first point, move through the rest, release at the last (freehand strokes). */
+  async function path(points, { modifiers = 0 } = {}) {
+    const [first, ...rest] = points;
+    await send("Input.dispatchMouseEvent", { type: "mouseMoved", x: first.x, y: first.y, buttons: 0, modifiers });
+    await mouse("mousePressed", first.x, first.y, { modifiers });
+    for (const p of rest) {
+      await send("Input.dispatchMouseEvent", { type: "mouseMoved", x: p.x, y: p.y, buttons: 1, button: "left", modifiers });
+      await sleep(8);
+    }
+    const last = rest.at(-1) ?? first;
+    await mouse("mouseReleased", last.x, last.y, { modifiers });
+    await sleep(50);
+  }
+
   const KEYS = {
     Escape: 27, Enter: 13, Delete: 46, Backspace: 8, ArrowLeft: 37, ArrowUp: 38, ArrowRight: 39, ArrowDown: 40,
   };
@@ -201,7 +215,7 @@ export async function launch({ width = 1600, height = 1000, headless = true, por
     }
   }
 
-  return { send, on, once, evaluate, waitFor, click, dblclick, drag, key, type, screenshot, setFiles, chooseFiles, navigate, close, consoleErrors, mouse };
+  return { send, on, once, evaluate, waitFor, click, dblclick, drag, path, key, type, screenshot, setFiles, chooseFiles, navigate, close, consoleErrors, mouse };
 }
 
 export { sleep };

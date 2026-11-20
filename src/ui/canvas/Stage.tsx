@@ -14,11 +14,13 @@ import {
   snapMove,
   snapScalar,
   worldToLocal,
+  boundsOfPoints,
   type Box,
   type Handle,
   type Point,
 } from "../../model/geometry.ts";
 import { panCrop, setCropZoom, cropZoom } from "../../model/image.ts";
+import { localToSource, maskOutlineLocal, outlinePolygon, simplifyPath, sourceToLocal, visibleThroughMask } from "../../model/mask.ts";
 import { applyResize, deleteElements, duplicateElements, rotateElements, scaleElements, translateElements, updateElement } from "../../model/ops.ts";
 import { findById, isLockedInTree } from "../../model/tree.ts";
 import type { Element, GrapheneDocument, TextElement } from "../../model/types.ts";
@@ -35,7 +37,7 @@ import {
   useEditor,
   zoomAt,
 } from "../../store/editor.ts";
-import { editableSelection, importFiles, placeAsset, select, selectionBounds } from "../../store/actions.ts";
+import { applyMaskShape, editableSelection, exitMaskEdit, importFiles, placeAsset, select, selectionBounds, updateMask } from "../../store/actions.ts";
 import { hitTest, marqueeHits, snapCandidates } from "./hit.ts";
 import { pickFileForFrame } from "../filePicker.ts";
 
@@ -46,7 +48,12 @@ type Gesture =
   | { kind: "scale"; ids: string[]; handle: Handle; box: Box }
   | { kind: "rotate"; ids: string[]; center: Point; startAngle: number; baseRotation: number }
   | { kind: "marquee"; start: Point; initial: string[]; additive: boolean }
-  | { kind: "crop"; id: string; start: Point; el: Element };
+  | { kind: "crop"; id: string; start: Point; el: Element }
+  | { kind: "mask-vertex"; id: string; index: number }
+  | { kind: "mask-corner"; id: string; corner: Handle; points: Point[] }
+  | { kind: "mask-move"; id: string; start: Point; points: Point[] }
+  | { kind: "mask-box"; id: string; start: Point }
+  | { kind: "mask-lasso"; id: string; last: Point };
 
 const SNAP_PX = 6;
 const HANDLE_PX = 9;
@@ -101,6 +108,8 @@ export function Stage() {
   const preview = useEditor((s) => s.preview);
   const renderTick = useEditor((s) => s.renderTick);
   const gestureActive = useEditor((s) => s.gestureBase !== null);
+  const maskEdit = useEditor((s) => s.maskEdit);
+  const maskDraft = useEditor((s) => s.maskDraft);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -110,6 +119,7 @@ export function Stage() {
   const [panning, setPanning] = useState(false);
   const [dropActive, setDropActive] = useState(false);
   const [tag, setTag] = useState<{ x: number; y: number; text: string } | null>(null);
+  const [maskCursor, setMaskCursor] = useState<Point | null>(null);
 
   const z = view.zoom;
   const toDoc = (clientX: number, clientY: number): Point => {
@@ -180,6 +190,7 @@ export function Stage() {
         drawPlaceholders: true,
         background: true,
         cropModeId: cropId,
+        maskEditId: maskEdit?.id ?? null,
       });
       ctx.restore();
       if (showGrid && !preview) {
@@ -208,7 +219,12 @@ export function Stage() {
       }
     });
     return () => cancelAnimationFrame(id);
-  }, [doc, view, viewport, editingTextId, cropId, renderTick, showGrid, preview]);
+  }, [doc, view, viewport, editingTextId, cropId, maskEdit, renderTick, showGrid, preview]);
+
+  // Leaving the image (e.g. selecting another layer in the Layers panel) ends mask editing.
+  useEffect(() => {
+    if (maskEdit && !selection.includes(maskEdit.id)) exitMaskEdit();
+  }, [maskEdit, selection]);
 
   // Space-to-pan and wheel zoom/pan.
   useEffect(() => {
@@ -259,6 +275,95 @@ export function Stage() {
 
   // ------------------------------------------------------------------ pointer
 
+  /** The image whose mask is being edited, with coordinate converters. */
+  const maskTarget = () => {
+    const s = getState();
+    if (!s.maskEdit || !s.doc) return null;
+    const el = findById(s.doc.elements, s.maskEdit.id);
+    if (el?.type !== "image" || !el.assetId) return null;
+    const asset = s.doc.assets.find((a) => a.id === el.assetId);
+    if (!asset) return null;
+    const toNorm = (p: Point) => localToSource(el, asset.width, asset.height, worldToLocal(el, p));
+    const v = s.view;
+    const toScreenNow = (p: Point) => ({ x: p.x * v.zoom + v.panX, y: p.y * v.zoom + v.panY });
+    const normToScreen = (n: Point) => toScreenNow(localToWorld(el, sourceToLocal(el, asset.width, asset.height, n)));
+    return { s, el, asset, edit: s.maskEdit, toNorm, toScreenNow, normToScreen };
+  };
+
+  const onMaskPointerDown = (e: React.PointerEvent, p: Point) => {
+    const t = maskTarget();
+    if (!t) {
+      exitMaskEdit();
+      return;
+    }
+    const { el, asset, edit, toNorm } = t;
+    const n = toNorm(p);
+    const capture = () => containerRef.current!.setPointerCapture(e.pointerId);
+    const handle = (e.target as HTMLElement).closest("[data-mask-vertex],[data-mask-mid],[data-mask-corner]");
+    if (!edit.drawing && el.mask) {
+      const mask = el.mask;
+      if (handle?.hasAttribute("data-mask-vertex")) {
+        const i = Number(handle.getAttribute("data-mask-vertex"));
+        if (e.altKey) {
+          if (mask.points.length > 3) updateMask(el.id, { points: mask.points.filter((_, j) => j !== i) });
+          return;
+        }
+        beginGesture();
+        gesture.current = { kind: "mask-vertex", id: el.id, index: i };
+        capture();
+        return;
+      }
+      if (handle?.hasAttribute("data-mask-mid")) {
+        const i = Number(handle.getAttribute("data-mask-mid"));
+        beginGesture();
+        const points = [...mask.points];
+        points.splice(i + 1, 0, n);
+        commit((d) => updateElement(d, el.id, { mask: { ...mask, points } }));
+        gesture.current = { kind: "mask-vertex", id: el.id, index: i + 1 };
+        capture();
+        return;
+      }
+      if (handle?.hasAttribute("data-mask-corner")) {
+        beginGesture();
+        gesture.current = { kind: "mask-corner", id: el.id, corner: handle.getAttribute("data-mask-corner") as Handle, points: mask.points };
+        capture();
+        return;
+      }
+      const local = worldToLocal(el, p);
+      if (visibleThroughMask({ ...el, mask: { ...mask, invert: false } }, asset.width, asset.height, local)) {
+        beginGesture();
+        gesture.current = { kind: "mask-move", id: el.id, start: n, points: mask.points };
+        capture();
+        return;
+      }
+      if (local.x < 0 || local.y < 0 || local.x > el.width || local.y > el.height) exitMaskEdit();
+      return;
+    }
+    if (edit.tool === "rect" || edit.tool === "ellipse") {
+      gesture.current = { kind: "mask-box", id: el.id, start: n };
+      setState({ maskDraft: [n, n] });
+      capture();
+      return;
+    }
+    if (edit.tool === "lasso") {
+      gesture.current = { kind: "mask-lasso", id: el.id, last: p };
+      setState({ maskDraft: [n] });
+      capture();
+      return;
+    }
+    // Polygon: each click adds a point; clicking the first point closes the shape.
+    const draft = t.s.maskDraft ?? [];
+    if (draft.length >= 3) {
+      const first = t.normToScreen(draft[0]);
+      const here = t.toScreenNow(p);
+      if (Math.hypot(first.x - here.x, first.y - here.y) <= 10) {
+        if (!applyMaskShape(el.id, "polygon", draft)) setState({ maskDraft: null });
+        return;
+      }
+    }
+    setState({ maskDraft: [...draft, n] });
+  };
+
   const onPointerDown = (e: React.PointerEvent) => {
     if (preview) return;
     const s = getState();
@@ -275,6 +380,10 @@ export function Stage() {
       return;
     }
     if (e.button !== 0) return;
+    if (s.maskEdit) {
+      onMaskPointerDown(e, p);
+      return;
+    }
 
     const handleEl = (e.target as HTMLElement).closest("[data-handle]");
     if (handleEl) {
@@ -345,7 +454,8 @@ export function Stage() {
     const screenTag = (text: string) => setTag({ x: e.clientX - r.left + 14, y: e.clientY - r.top + 18, text });
 
     if (!g) {
-      if (preview || s.editingTextId) return;
+      if (s.maskEdit?.drawing && s.maskEdit.tool === "polygon") setMaskCursor(p);
+      if (preview || s.editingTextId || s.maskEdit) return;
       const hit = hitTest(s.doc, p, 3 / zoom, s.enteredGroup, e.ctrlKey || e.metaKey);
       if (hit.id !== s.hoverId) setState({ hoverId: hit.id });
       return;
@@ -454,6 +564,47 @@ export function Stage() {
         }
         return;
       }
+      case "mask-vertex":
+      case "mask-corner":
+      case "mask-move": {
+        const t = maskTarget();
+        const base = s.gestureBase;
+        if (!t || !base || !t.el.mask) return;
+        const n = t.toNorm(p);
+        let points: Point[];
+        if (g.kind === "mask-vertex") points = t.el.mask.points.map((q, i) => (i === g.index ? n : q));
+        else if (g.kind === "mask-move") points = g.points.map((q) => ({ x: q.x + n.x - g.start.x, y: q.y + n.y - g.start.y }));
+        else {
+          const b = boundsOfPoints(g.points);
+          let x0 = b.x;
+          let y0 = b.y;
+          let x1 = b.x + b.width;
+          let y1 = b.y + b.height;
+          if (g.corner.includes("w")) x0 = n.x;
+          if (g.corner.includes("e")) x1 = n.x;
+          if (g.corner.includes("n")) y0 = n.y;
+          if (g.corner.includes("s")) y1 = n.y;
+          points = [
+            { x: Math.min(x0, x1), y: Math.min(y0, y1) },
+            { x: Math.max(x0, x1), y: Math.max(y0, y1) },
+          ];
+        }
+        const mask = { ...t.el.mask, points };
+        commit(() => updateElement(base, g.id, { mask }));
+        return;
+      }
+      case "mask-box": {
+        const t = maskTarget();
+        if (t) setState({ maskDraft: [g.start, t.toNorm(p)] });
+        return;
+      }
+      case "mask-lasso": {
+        const t = maskTarget();
+        if (!t || Math.hypot(p.x - g.last.x, p.y - g.last.y) * zoom < 3) return;
+        g.last = p;
+        setState({ maskDraft: [...(s.maskDraft ?? []), t.toNorm(p)] });
+        return;
+      }
       case "crop": {
         const base = s.gestureBase;
         if (!base || g.el.type !== "image") return;
@@ -476,12 +627,38 @@ export function Stage() {
     if (!g) return;
     if (g.kind === "pan") setPanning(false);
     if (g.kind === "marquee") setMarquee(null);
+    if (g.kind === "mask-box" || g.kind === "mask-lasso") {
+      const t = maskTarget();
+      const d = getState().maskDraft;
+      if (!t || !d) return setState({ maskDraft: null });
+      if (g.kind === "mask-box") {
+        const a = t.normToScreen(d[0]);
+        const b2 = t.normToScreen(d[1]);
+        if (Math.abs(a.x - b2.x) < 4 || Math.abs(a.y - b2.y) < 4 || !applyMaskShape(g.id, t.edit.tool as "rect" | "ellipse", d)) setState({ maskDraft: null });
+        return;
+      }
+      // Freehand: simplify in source pixels to about 1.5 screen px of tolerance.
+      const { width: aw, height: ah } = t.asset;
+      const k1 = t.normToScreen({ x: 1, y: 0 });
+      const k0 = t.normToScreen({ x: 0, y: 0 });
+      const screenPerSourcePx = Math.hypot(k1.x - k0.x, k1.y - k0.y) / aw;
+      const simplified = simplifyPath(
+        d.map((q) => ({ x: q.x * aw, y: q.y * ah })),
+        1.5 / Math.max(screenPerSourcePx, 1e-9),
+      ).map((q) => ({ x: q.x / aw, y: q.y / ah }));
+      if (!applyMaskShape(g.id, "polygon", simplified)) setState({ maskDraft: null });
+      return;
+    }
     endGesture();
   };
 
   const onDoubleClick = (e: React.MouseEvent) => {
     if (preview) return;
     const s = getState();
+    if (s.maskEdit) {
+      if (s.maskEdit.drawing && s.maskEdit.tool === "polygon" && (s.maskDraft?.length ?? 0) >= 3) applyMaskShape(s.maskEdit.id, "polygon", s.maskDraft!);
+      return;
+    }
     const p = toDoc(e.clientX, e.clientY);
     const tol = 3 / s.view.zoom;
     const shallow = hitTest(s.doc!, p, tol, s.enteredGroup, false);
@@ -561,7 +738,7 @@ export function Stage() {
       const locked = isLockedInTree(doc.elements, el.id);
       overlay.push(<polygon key={`sel-${el.id}`} className={locked ? "locked-outline" : el.type === "group" ? "group-outline" : "sel-outline"} points={poly(el)} />);
     }
-    const showHandles = !editingTextId && !cropId && editable.length > 0 && !(gestureActive && gesture.current?.kind === "move");
+    const showHandles = !editingTextId && !cropId && !maskEdit && editable.length > 0 && !(gestureActive && gesture.current?.kind === "move");
     if (showHandles) {
       const single = editable.length === 1 && editable[0].type !== "group" ? editable[0] : null;
       const box: (Box & { rotation: number }) | null = single ?? (() => {
@@ -606,6 +783,57 @@ export function Stage() {
       const el = findById(doc.elements, cropId);
       if (el) overlay.push(<polygon key="crop" className="crop-outline" points={poly(el)} />);
     }
+    const mt = maskEdit ? findById(doc.elements, maskEdit.id) : null;
+    const masset = mt?.type === "image" && mt.assetId ? doc.assets.find((a) => a.id === mt.assetId) : null;
+    if (maskEdit && mt?.type === "image" && masset) {
+      const aw = masset.width;
+      const ah = masset.height;
+      const nToS = (n: Point) => toScreen(localToWorld(mt, sourceToLocal(mt, aw, ah, n)));
+      const lToS = (q: Point) => toScreen(localToWorld(mt, q));
+      const pts = (arr: Point[]) => arr.map((q) => `${q.x},${q.y}`).join(" ");
+      overlay.push(<polygon key="mask-frame" className="crop-outline" points={poly(mt)} />);
+      if (mt.mask && !maskEdit.drawing) {
+        const o = maskOutlineLocal(mt, aw, ah);
+        if (o) overlay.push(<polygon key="mask-outline" className="mask-outline" data-testid="mask-outline" points={pts(outlinePolygon(o).map(lToS))} />);
+        if (mt.mask.shape === "polygon") {
+          const vs = mt.mask.points.map(nToS);
+          vs.forEach((v, i) => {
+            const w = vs[(i + 1) % vs.length];
+            overlay.push(<circle key={`mm${i}`} data-mask-mid={i} className="mask-mid" cx={(v.x + w.x) / 2} cy={(v.y + w.y) / 2} r={3.5} />);
+          });
+          vs.forEach((v, i) =>
+            overlay.push(<rect key={`mv${i}`} data-mask-vertex={i} data-testid="mask-vertex" className="mask-vertex" x={v.x - 4.5} y={v.y - 4.5} width={9} height={9} rx={2} />),
+          );
+        } else {
+          const b = boundsOfPoints(mt.mask.points);
+          const corners: [Handle, Point][] = [
+            ["nw", { x: b.x, y: b.y }],
+            ["ne", { x: b.x + b.width, y: b.y }],
+            ["se", { x: b.x + b.width, y: b.y + b.height }],
+            ["sw", { x: b.x, y: b.y + b.height }],
+          ];
+          for (const [h, n] of corners) {
+            const v = nToS(n);
+            overlay.push(<rect key={`mc${h}`} data-mask-corner={h} data-testid={`mask-corner-${h}`} className="mask-vertex" x={v.x - 4.5} y={v.y - 4.5} width={9} height={9} rx={2} />);
+          }
+        }
+      }
+      if (maskDraft && maskEdit.drawing) {
+        if (maskEdit.tool === "rect" || maskEdit.tool === "ellipse") {
+          const o = maskOutlineLocal({ ...mt, mask: { shape: maskEdit.tool, points: maskDraft, feather: 0, invert: false } }, aw, ah);
+          if (o) overlay.push(<polygon key="mask-draft" className="mask-outline" points={pts(outlinePolygon(o).map(lToS))} />);
+        } else {
+          const vs = maskDraft.map(nToS);
+          const line = maskCursor && maskEdit.tool === "polygon" ? [...vs, toScreen(maskCursor)] : vs;
+          overlay.push(<polyline key="mask-draft" className="mask-draft" points={pts(line)} />);
+          if (maskEdit.tool === "polygon") {
+            vs.forEach((v, i) =>
+              overlay.push(<circle key={`md${i}`} className={i === 0 && vs.length >= 3 ? "mask-vertex mask-vertex--close" : "mask-vertex"} cx={v.x} cy={v.y} r={i === 0 ? 6 : 4} />),
+            );
+          }
+        }
+      }
+    }
     const W = doc.project.width;
     const H = doc.project.height;
     guides.xs.forEach((x, i) => {
@@ -627,7 +855,7 @@ export function Stage() {
   const editing = editingTextId ? findById(doc.elements, editingTextId) : null;
   const cls = ["stage", spaceDown ? "stage--pan" : "", panning ? "stage--panning" : "", dropActive ? "stage--drop" : ""].join(" ");
   const hoverEl = hoverId ? findById(doc.elements, hoverId) : null;
-  const cursor = !spaceDown && !panning && hoverEl && !isLockedInTree(doc.elements, hoverEl.id) ? (cropId ? "grab" : "move") : undefined;
+  const cursor = maskEdit?.drawing ? "crosshair" : !spaceDown && !panning && hoverEl && !isLockedInTree(doc.elements, hoverEl.id) ? (cropId ? "grab" : "move") : undefined;
 
   return (
     <div
@@ -669,7 +897,15 @@ export function Stage() {
           </button>
         </div>
       )}
-      {enteredGroup && !cropId && !preview && (
+      {maskEdit && !preview && (
+        <div className="stage-hint" data-testid="mask-hint" onPointerDown={(e) => e.stopPropagation()}>
+          <span>{maskHint(maskEdit, maskDraft?.length ?? 0)}</span>
+          <button className="btn btn--primary btn--sm" onClick={exitMaskEdit}>
+            Done
+          </button>
+        </div>
+      )}
+      {enteredGroup && !cropId && !maskEdit && !preview && (
         <div className="stage-hint" onPointerDown={(e) => e.stopPropagation()}>
           <span>Editing inside “{findById(doc.elements, enteredGroup)?.name}”.</span>
           <button className="btn btn--sm" onClick={() => setState({ enteredGroup: null, selection: [enteredGroup] })}>
@@ -679,6 +915,19 @@ export function Stage() {
       )}
     </div>
   );
+}
+
+function maskHint(edit: { tool: string; drawing: boolean }, draftLength: number): string {
+  if (edit.drawing) {
+    if (edit.tool === "polygon")
+      return draftLength >= 3
+        ? "Keep clicking to add points. Click the first point, double-click or press Enter to close. Backspace removes the last point."
+        : "Click around the subject to place points.";
+    if (edit.tool === "lasso") return "Drag around the subject to draw a freehand mask.";
+    return "Drag across the photo to draw the shape.";
+  }
+  if (edit.tool === "polygon") return "Drag points to adjust. Drag a midpoint to add a point; Alt+click a point to remove it. Drag inside to move the mask.";
+  return "Drag the corners to resize the mask, or drag inside it to move it. The original photo is not changed.";
 }
 
 export function isTyping(target: EventTarget | null): boolean {

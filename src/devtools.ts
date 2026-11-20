@@ -8,6 +8,8 @@ import { imageStatus } from "./render/imageCache.ts";
 import { layoutText } from "./model/text.ts";
 import { canvasMeasure } from "./render/measure.ts";
 import { imageDrawPlan } from "./model/image.ts";
+import { sourceToLocal } from "./model/mask.ts";
+import { localToWorld } from "./model/geometry.ts";
 import { commit, getState, setState } from "./store/editor.ts";
 
 function byName(name: string): Element | null {
@@ -32,6 +34,17 @@ export function installDevtools(): void {
       const stage = document.querySelector('[data-testid="stage"]')!.getBoundingClientRect();
       const v = getState().view;
       return { x: stage.left + v.panX + x * v.zoom, y: stage.top + v.panY + y * v.zoom };
+    },
+    /** Client coordinates of a point given in normalised source-image coordinates of an image layer. */
+    clientOfSource(name: string, nx: number, ny: number) {
+      const el = byName(name);
+      const doc = getState().doc!;
+      if (el?.type !== "image" || !el.assetId) return null;
+      const a = doc.assets.find((x) => x.id === el.assetId)!;
+      const w = localToWorld(el, sourceToLocal(el, a.width, a.height, { x: nx, y: ny }));
+      const stage = document.querySelector('[data-testid="stage"]')!.getBoundingClientRect();
+      const v = getState().view;
+      return { x: stage.left + v.panX + w.x * v.zoom, y: stage.top + v.panY + w.y * v.zoom };
     },
     /** Every asset placed on the canvas has its display proxy decoded. */
     imagesReady() {
