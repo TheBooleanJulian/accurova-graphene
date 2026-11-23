@@ -61,7 +61,7 @@ Verified: `npm test` passes 49 unit tests, including coordinate round trips, mas
 
 ## Known limitations
 
-- **Studio cut-outs are hand-traced polygons** with a 1–2 px feather. A faint seam can show where the subject meets the backdrop's cut-out; refine it with the vertex tools. Automatic subject selection (background removal) is Phase 3.
+- **Studio cut-outs** are traced from the photo by `scripts/trace-studio-masks.py` (2026-11-23), replacing the first hand-drawn polygons, which cut into the gear and let the studio wall show. Colour rules plus sub-pixel edge tracing give the result as editable polygons. Very fine detail (cable strands, the softbox's thinnest ribs) is simplified to about 1 px, and the original photo is unchanged. Re-run the script if `demo/original_background.png` changes; a unit test checks the recorded hash.
 - **Masks** are one shape per layer (holes via keyhole polygons), with straight polygon edges only (no Béziers) and no brush painting. Feather needs canvas `filter` (Chromium, Firefox); elsewhere edges are hard.
 - **Gradients** are linear only. Text fills are solid colour only.
 - **Rotated groups:** rotating a group rotates its children about the group centre; afterwards the group's selection box is axis-aligned rather than rotated.
