@@ -83,4 +83,12 @@ Development happens in a non-Drive working copy (npm installs corrupt on Google 
 
 **Integrity.** Masks are allowed on Protected assets; the spec lists masking among the permitted non-destructive operations.
 
+**Sample outlines (2026-11-23).** The studio layers' polygons come from `scripts/trace-studio-masks.py` (numpy/scipy/scikit-image, authoring-time only, never shipped).
+- **Search areas:** a coarse region per object limits where it looks.
+- **Pixel rules:** paper is bright, unsaturated and not warm, which separates it from lit skin; the gear is near-black; the subject is what the paper encloses.
+- **Edges:** traced with sub-pixel marching squares into `src/samples/studio-masks.json`.
+- **Backdrop hole:** built from the subject's final polygon, shrunk 3 px, so the backdrop tucks under the subject with no seam.
+
+This is classical image analysis, not a generative model, and it only reads the photo.
+
 **Not included:** multiple shapes per mask, Bézier curves, brush/eraser painting, and automatic subject selection. Automatic selection is AI background removal, planned for Phase 3 with approval.

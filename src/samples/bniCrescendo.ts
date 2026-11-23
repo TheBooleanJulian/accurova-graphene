@@ -7,6 +7,7 @@
 import { createDocument, createEmptyFrame, createIcon, createShape, createText, newId } from "../model/defaults.ts";
 import { scaleEl, syncGroupBounds } from "../model/ops.ts";
 import { fitFrameToMask } from "../model/mask.ts";
+import studioMasks from "./studio-masks.json" with { type: "json" };
 import type { AssetSlot, Element, GrapheneDocument, GroupElement, ImageElement, ShapeElement, TextElement } from "../model/types.ts";
 
 export const BNI_SAMPLE_ID = "bni-crescendo";
@@ -82,48 +83,12 @@ function feature(label: string, icon: string, paths: string[], cx: number): Grou
   ]);
 }
 
-// Cut-out outlines in pixels of the supplied 2048 × 1536 studio photograph (original_background.png).
-// Starting points for the user to refine with the mask tools; the photo itself is never modified.
-const STUDIO_W = 2048;
-const STUDIO_H = 1536;
-const STUDIO_BACKDROP = [
-  [1205, 1078], [1150, 1045], [1080, 1012], [1048, 985], [1078, 945], [1098, 880], [1104, 480], [1098, 428],
-  [1436, 428], [1436, 472], [1394, 482], [1396, 1060], [1340, 1086], [1250, 1080],
-];
-const STUDIO_SUBJECT = [
-  [1200, 975], [1150, 962], [1150, 940], [1160, 880], [1155, 792], [1130, 786], [1116, 774], [1118, 700],
-  [1122, 600], [1136, 572], [1170, 560], [1166, 545], [1165, 518], [1184, 498], [1200, 486], [1224, 494],
-  [1233, 520], [1230, 546], [1226, 560], [1265, 572], [1280, 600], [1283, 700], [1282, 775], [1262, 786],
-  [1246, 792], [1242, 880], [1240, 940], [1232, 972],
-];
-const STUDIO_SOFTBOX = [
-  [130, 0], [195, 0], [265, 45], [445, 140], [480, 95], [560, 68], [700, 92], [900, 185], [945, 260], [945, 390],
-  [920, 520], [850, 620], [760, 700], [700, 738], [640, 705], [560, 615], [480, 500], [445, 380], [448, 280],
-  [345, 262], [340, 300], [388, 915], [352, 915], [302, 300], [300, 240], [178, 178], [150, 160], [140, 100],
-  [132, 40],
-];
-const STUDIO_DSLR = [
-  [332, 960], [345, 925], [400, 912], [545, 914], [600, 938], [612, 990], [608, 1185], [700, 1192], [702, 1208],
-  [590, 1212], [588, 1300], [575, 1380], [610, 1440], [650, 1500], [680, 1536], [330, 1536], [365, 1450],
-  [395, 1385], [390, 1300], [395, 1275], [140, 1368], [122, 1356], [140, 1345], [390, 1245], [345, 1200],
-  [335, 1100],
-];
-
-/**
- * One polygon with a hole: walk the outer ring from its first point, bridge to the hole's nearest
- * point, walk the hole the other way round, and bridge back (a "keyhole"). Fills correctly with
- * both the non-zero and even-odd rules.
- */
-function withHole(outer: number[][], hole: number[][]): number[][] {
-  const start = outer[0];
-  let best = 0;
-  hole.forEach((p, i) => {
-    if (Math.hypot(p[0] - start[0], p[1] - start[1]) < Math.hypot(hole[best][0] - start[0], hole[best][1] - start[1])) best = i;
-  });
-  const ring = [...hole.slice(best), ...hole.slice(0, best)].reverse();
-  const bridge = ring[ring.length - 1];
-  return [...outer, start, bridge, ...ring.slice(0, -1), bridge];
-}
+// Cut-out outlines traced from the supplied studio photograph (demo/original_background.png) by
+// scripts/trace-studio-masks.py: sub-pixel edges of the paper, the subject and the near-black gear.
+// They are ordinary editable polygons; the photo itself is never modified.
+const STUDIO_W = studioMasks.width;
+const STUDIO_H = studioMasks.height;
+const STUDIO = studioMasks.layers as Record<"backdrop" | "subject" | "softbox" | "dslr", number[][]>;
 
 /** Lucide path data (ISC) for the five icons the poster uses, embedded so the sample needs no lookup. */
 export interface SampleIcons {
@@ -156,14 +121,15 @@ export function buildBniCrescendo(icons: SampleIcons): GrapheneDocument {
   // different non-destructive mask, so every piece can be moved or refined independently.
   const studioLayer = (name: string, outline: number[][], feather: number) => {
     const base = frame(name, "studio", 595, 246, 598, 676, { crop: { x: 100 / 2048, y: 0, width: 1360 / 2048, height: 1 } });
-    const mask = { shape: "polygon" as const, points: outline.map(([x, y]) => ({ x: x / STUDIO_W, y: y / STUDIO_H })), feather, invert: false };
+    const mask = { shape: "polygon" as const, points: outline.map(([x, y]) => ({ x, y })), feather, invert: false };
     return fitFrameToMask({ ...base, mask }, STUDIO_W, STUDIO_H);
   };
   const studioLayers = group("Studio composite", [
-    studioLayer("Studio backdrop", withHole(STUDIO_BACKDROP, STUDIO_SUBJECT), 1.5),
-    studioLayer("Brown-jacket subject", STUDIO_SUBJECT, 1.2),
-    studioLayer("Studio softbox / lights", STUDIO_SOFTBOX, 2),
-    studioLayer("DSLR on tripod", STUDIO_DSLR, 1.5),
+    // The backdrop's outline already contains a slightly shrunken hole for the subject.
+    studioLayer("Studio backdrop", STUDIO.backdrop, 0.8),
+    studioLayer("Brown-jacket subject", STUDIO.subject, 0.8),
+    studioLayer("Studio softbox / lights", STUDIO.softbox, 0.8),
+    studioLayer("DSLR on tripod", STUDIO.dslr, 0.8),
   ]);
   // Enlarge the set-up 1.25x about its bottom-left so it reads at the start of the queue.
   const studio = scaleEl(studioLayers, 1.25, { x: 600, y: 922 }) as GroupElement;
