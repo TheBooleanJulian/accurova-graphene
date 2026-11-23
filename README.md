@@ -73,7 +73,7 @@ src/
   ui/         React components (canvas stage, panels, inspector, dialogs)
   samples/    the BNI Crescendo template
   icons/      generated Lucide data (npm run icons)
-scripts/      icon generation, sample preparation
+scripts/      icon generation, sample preparation, studio cut-out tracing (Python, authoring only)
 tests/e2e/    CDP driver and workflow test
 docs/         DECISIONS.md (architecture), PROGRESS.md (status, limitations)
 ```
