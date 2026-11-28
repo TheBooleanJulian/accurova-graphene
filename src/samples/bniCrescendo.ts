@@ -5,7 +5,7 @@
 // photo, studio photo, four portraits). Nothing is generated: the user maps
 // their own files to the slots, and the frames show those originals.
 import { createDocument, createEmptyFrame, createIcon, createShape, createText, newId } from "../model/defaults.ts";
-import { scaleEl, syncGroupBounds } from "../model/ops.ts";
+import { syncGroupBounds } from "../model/ops.ts";
 import { fitFrameToMask } from "../model/mask.ts";
 import studioMasks from "./studio-masks.json" with { type: "json" };
 import type { AssetSlot, Element, GrapheneDocument, GroupElement, ImageElement, ShapeElement, TextElement } from "../model/types.ts";
@@ -52,10 +52,10 @@ function portraitCrop(cx: number, top: number, heightFrac: number, frameAspect: 
 }
 
 function portraitCard(n: number, x: number, crop: { cx: number; top: number }): GroupElement {
-  const y = 700;
-  const w = 132;
-  const h = 192;
-  const pad = 7;
+  const y = 614;
+  const w = 181;
+  const h = 264;
+  const pad = 9;
   const card = createShape("rect", 0, 0, {
     name: "Card",
     x,
@@ -63,14 +63,14 @@ function portraitCard(n: number, x: number, crop: { cx: number; top: number }): 
     width: w,
     height: h,
     fill: WHITE,
-    cornerRadius: 10,
+    cornerRadius: 12,
     shadow: { color: "#0000004D", blur: 18, offsetX: 0, offsetY: 6 },
   });
   const iw = w - pad * 2;
   const ih = h - pad * 2;
   const photo = frame(`Portrait 0${n} photo`, `portrait-${n}`, x + pad, y + pad, iw, ih, {
     cornerRadius: 6,
-    crop: portraitCrop(crop.cx, crop.top, 0.42, iw / ih),
+    crop: portraitCrop(crop.cx, crop.top, 0.46, iw / ih),
   });
   return group(`Portrait 0${n}`, [card, photo]);
 }
@@ -79,7 +79,7 @@ function feature(label: string, icon: string, paths: string[], cx: number): Grou
   const name = label.replace("\n", " ");
   return group(name, [
     { ...createIcon(icon, paths, cx, 710, 44, NEAR_BLACK), name: `${name} icon`, strokeWidth: 1.6 },
-    text(`${name} label`, label, cx - 75, 740, 150, { fontSize: 19, fontWeight: 600, italic: false, fill: NEAR_BLACK, align: "center", lineHeight: 1.2 }),
+    text(`${name} label`, label, cx - 80, 740, 160, { fontSize: 19, fontWeight: 600, italic: false, fill: NEAR_BLACK, align: "center", lineHeight: 1.17 }),
   ]);
 }
 
@@ -119,20 +119,24 @@ export function buildBniCrescendo(icons: SampleIcons): GrapheneDocument {
 
   // The studio photo cut into the spec's four layers. Each is the SAME original file shown through a
   // different non-destructive mask, so every piece can be moved or refined independently.
-  const studioLayer = (name: string, outline: number[][], feather: number) => {
-    const base = frame(name, "studio", 595, 246, 598, 676, { crop: { x: 100 / 2048, y: 0, width: 1360 / 2048, height: 1 } });
+  // Where each cut-out sits: canvas px per photo px, and the canvas position of the photo's top-left
+  // corner. The backdrop and subject share one placement so the subject stays in its hole; the softbox
+  // and the camera are sized and moved independently, as a designer would arrange them.
+  const PERSON = { scale: 0.784, x: 34, y: -132 };
+  const SOFTBOX = { scale: 0.534, x: 424, y: 11 };
+  const CAMERA = { scale: 0.74, x: 378, y: -146 };
+  const studioLayer = (name: string, outline: number[][], feather: number, at: { scale: number; x: number; y: number }) => {
+    const base = frame(name, "studio", at.x, at.y, STUDIO_W * at.scale, STUDIO_H * at.scale, { crop: { x: 0, y: 0, width: 1, height: 1 } });
     const mask = { shape: "polygon" as const, points: outline.map(([x, y]) => ({ x, y })), feather, invert: false };
     return fitFrameToMask({ ...base, mask }, STUDIO_W, STUDIO_H);
   };
-  const studioLayers = group("Studio composite", [
+  const studio = group("Studio composite", [
     // The backdrop's outline already contains a slightly shrunken hole for the subject.
-    studioLayer("Studio backdrop", STUDIO.backdrop, 0.8),
-    studioLayer("Brown-jacket subject", STUDIO.subject, 0.8),
-    studioLayer("Studio softbox / lights", STUDIO.softbox, 0.8),
-    studioLayer("DSLR on tripod", STUDIO.dslr, 0.8),
+    studioLayer("Studio backdrop", STUDIO.backdrop, 0.8, PERSON),
+    studioLayer("Brown-jacket subject", STUDIO.subject, 0.8, PERSON),
+    studioLayer("Studio softbox / lights", STUDIO.softbox, 0.8, SOFTBOX),
+    studioLayer("DSLR on tripod", STUDIO.dslr, 0.8, CAMERA),
   ]);
-  // Enlarge the set-up 1.25x about its bottom-left so it reads at the start of the queue.
-  const studio = scaleEl(studioLayers, 1.25, { x: 600, y: 922 }) as GroupElement;
 
   const brand = group("Brand", [
     // Contain-fit with the logo's transparent margin trimmed. The mark itself is never cropped or redrawn.
@@ -142,58 +146,58 @@ export function buildBniCrescendo(icons: SampleIcons): GrapheneDocument {
 
   const ribbonGradient = { type: "linear" as const, angle: 180, stops: [{ offset: 0, color: "#D20A1C" }, { offset: 1, color: "#A50613" }] };
   const exclusive = group("Exclusive ribbon", [
-    ribbon("Ribbon stripe 1", 1258, 52, 12, 82, { slantLeft: 16, slantRight: 16, cornerRadius: 2 }),
-    ribbon("Ribbon stripe 2", 1275, 52, 12, 82, { slantLeft: 16, slantRight: 16, cornerRadius: 2 }),
-    ribbon("Red ribbon shape", 1294, 52, 353, 82, { slantLeft: 18, slantRight: 0, cornerRadius: 6, fill: ribbonGradient }),
-    text("Exclusive for", "Exclusive for", 1332, 58, 290, { fontSize: 28, fontWeight: 700 }),
-    text("BNI Crescendo", "BNI Crescendo", 1322, 88, 315, { fontSize: 38 }),
+    ribbon("Ribbon stripe 1", 1133, 52, 26, 107, { slantLeft: 19, slantRight: 19, cornerRadius: 2 }),
+    ribbon("Ribbon stripe 2", 1155, 52, 26, 107, { slantLeft: 19, slantRight: 19, cornerRadius: 2 }),
+    ribbon("Red ribbon shape", 1187, 51, 460, 108, { slantLeft: 20, slantRight: 0, cornerRadius: 8, fill: ribbonGradient }),
+    text("Exclusive for", "Exclusive for", 1234, 59, 380, { fontSize: 35, fontWeight: 700 }),
+    text("BNI Crescendo", "BNI Crescendo", 1219, 96, 420, { fontSize: 49 }),
   ]);
 
   const headline = group("Headline", [
-    group("Fast and Easy ribbon", [
+    group("Professional Portraits ribbon", [
       ribbon("Ribbon", 44, 172, 372, 60, { slantLeft: 14, slantRight: 14, cornerRadius: 8 }),
       ribbon("Stripe 1", 420, 176, 10, 52, { slantLeft: 13, slantRight: 13, cornerRadius: 2 }),
       ribbon("Stripe 2", 436, 176, 10, 52, { slantLeft: 13, slantRight: 13, cornerRadius: 2 }),
       ribbon("Stripe 3", 452, 176, 10, 52, { slantLeft: 13, slantRight: 13, cornerRadius: 2 }),
-      text("Fast and Easy", "Fast and Easy", 76, 178, 330, { fontSize: 42 }),
+      text("Professional Portraits, Made Easy", "Professional Portraits,\nMade Easy", 76, 176, 330, { fontSize: 25, lineHeight: 1.08 }),
     ]),
-    text("3 Pose", "3 Pose", 50, 240, 540, { fontSize: 150, fontWeight: 800, italic: false, fill: NAVY, lineHeight: 1 }),
-    text("Upper Body Portrait", "Upper Body Portrait", 54, 378, 570, { fontSize: 46, fontWeight: 700, italic: false, fill: NAVY, lineHeight: 1.1 }),
+    text("3 Poses", "3 Poses", 50, 240, 560, { fontSize: 130, fontWeight: 800, italic: false, fill: NAVY, lineHeight: 1 }),
+    text("Upper Body Portraits", "Upper Body Portraits", 54, 378, 580, { fontSize: 46, fontWeight: 700, italic: false, fill: NAVY, lineHeight: 1.1 }),
+    text("Booking line", "Message Julian to book your slot.", 55, 434, 520, { fontSize: 25, fontWeight: 400, fill: NAVY, lineHeight: 1.15 }),
   ]);
 
   const offer = group("Offer", [
     ribbon("Red offer panel", 22, 492, 600, 170, { slantLeft: 24, slantRight: 24, cornerRadius: 18, fill: ribbonGradient }),
-    text("Special Package", "Special Package", 100, 503, 360, { fontSize: 32 }),
+    text("BNI Crescendo Special", "BNI Crescendo Special", 100, 503, 420, { fontSize: 32 }),
     text("$50", "$50", 76, 540, 250, { fontSize: 108, fontWeight: 900, lineHeight: 1 }),
     createShape("rect", 0, 0, { name: "Divider", x: 332, y: 556, width: 4, height: 92, rotation: 15, fill: WHITE }),
-    text("for", "for", 366, 548, 200, { fontSize: 36 }),
-    text("3 Photos", "3 Photos", 362, 588, 250, { fontSize: 46 }),
+    text("for 3 processed photos", "for 3 processed\nphotos", 369, 572, 240, { fontSize: 28, lineHeight: 1.08 }),
   ]);
 
   const features = group("Features", [
-    feature("Authentic\nPhotos", "camera", icons.camera, 100),
+    feature("Real You.\nNo AI.", "camera", icons.camera, 100),
     createShape("rect", 0, 0, { name: "Separator 1", x: 175, y: 688, width: 1.5, height: 92, fill: GREY }),
-    feature("Quick &\nEfficient", "zap", icons.zap, 250),
+    feature("Quick &\nConvenient", "zap", icons.zap, 250),
     createShape("rect", 0, 0, { name: "Separator 2", x: 325, y: 688, width: 1.5, height: 92, fill: GREY }),
-    feature("Clean White\nBackdrop", "layers", icons.layers, 400),
+    feature("Clean,\nProfessional\nBackdrop", "layers", icons.layers, 400),
     createShape("rect", 0, 0, { name: "Separator 3", x: 475, y: 688, width: 1.5, height: 92, fill: GREY }),
-    feature("Ready for\nBNI+ & More", "monitor", icons.monitor, 550),
+    feature("Ready for BNI+,\nLinkedIn &\nBeyond", "monitor", icons.monitor, 550),
   ]);
 
   const portraits = group("Portrait examples", [
-    portraitCard(1, 1080, { cx: 0.47, top: 0.11 }),
-    portraitCard(2, 1221, { cx: 0.54, top: 0.1 }),
-    portraitCard(3, 1362, { cx: 0.47, top: 0.14 }),
-    portraitCard(4, 1503, { cx: 0.52, top: 0.07 }),
+    portraitCard(1, 861, { cx: 0.47, top: 0.07 }),
+    portraitCard(2, 1054, { cx: 0.54, top: 0.06 }),
+    portraitCard(3, 1248, { cx: 0.47, top: 0.1 }),
+    portraitCard(4, 1441, { cx: 0.52, top: 0.03 }),
   ]);
 
   const navyGradient = { type: "linear" as const, angle: 180, stops: [{ offset: 0, color: "#0B2A5E" }, { offset: 1, color: "#061634" }] };
   const footer = group("Footer", [
     ribbon("Footer strip", 22, 818, 620, 92, { slantLeft: 0, slantRight: 22, cornerRadius: 14, fill: navyGradient }),
     { ...createIcon("calendar-days", icons.calendar, 70, 864, 52, WHITE), name: "Calendar icon", strokeWidth: 1.6 },
-    text("Next Session", "Next Session", 112, 830, 300, { fontSize: 20, fontWeight: 700 }),
+    text("Next Photography Session", "Next Photography Session", 112, 830, 400, { fontSize: 20, fontWeight: 700 }),
     text("Date and time", "26 Nov (Thurs) at 10:00 AM", 112, 852, 515, { fontSize: 30 }),
-    text("After the BNI Meeting", "After the BNI Meeting", 112, 888, 400, { fontSize: 17, fontWeight: 500, fill: GREY }),
+    text("After the BNI Meeting.", "After the BNI Meeting.", 112, 888, 400, { fontSize: 17, fontWeight: 500, fill: GREY }),
   ]);
 
   doc.elements = syncGroupBounds([background, studio, brand, exclusive, headline, offer, features, portraits, footer]);
