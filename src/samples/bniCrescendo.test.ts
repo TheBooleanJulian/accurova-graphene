@@ -63,21 +63,21 @@ test("the spec's exact copy is present as editable text", () => {
   for (const copy of [
     "Exclusive for",
     "BNI Crescendo",
-    "Fast and Easy",
-    "3 Pose",
-    "Upper Body Portrait",
-    "Special Package",
+    "Professional Portraits,\nMade Easy",
+    "3 Poses",
+    "Upper Body Portraits",
+    "Message Julian to book your slot.",
+    "BNI Crescendo Special",
     "$50",
-    "for",
-    "3 Photos",
-    "Authentic\nPhotos",
-    "Quick &\nEfficient",
-    "Clean White\nBackdrop",
-    "Ready for\nBNI+ & More",
-    "Next Session",
+    "for 3 processed\nphotos",
+    "Real You.\nNo AI.",
+    "Quick &\nConvenient",
+    "Clean,\nProfessional\nBackdrop",
+    "Ready for BNI+,\nLinkedIn &\nBeyond",
+    "Next Photography Session",
     "26 Nov (Thurs) at 10:00 AM",
-    "After the BNI Meeting",
+    "After the BNI Meeting.",
   ]) {
-    assert.ok(texts.includes(copy), `copy "${copy.replace("\n", " ")}"`);
+    assert.ok(texts.includes(copy), `copy "${copy.replaceAll("\n", " ")}"`);
   }
 });

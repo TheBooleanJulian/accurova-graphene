@@ -59,6 +59,17 @@ Verified: `npm test` passes 49 unit tests, including coordinate round trips, mas
 - GitHub Actions CI: typecheck, build and unit tests, plus the end-to-end suite in headless Chrome.
 - Fixed: the welcome screen's sample button could open "map your files" instead of loading the photos when clicked before the sample check finished.
 
+## Sample matches the final deliverable (2026-11-28)
+
+The BNI template now reproduces the owner's final banner, not the spec's first draft:
+- **Copy:** "Professional Portraits, Made Easy", "3 Poses", "Upper Body Portraits", a new booking line, "BNI Crescendo Special", "for 3 processed photos", new feature labels and "Next Photography Session".
+- **Layout:**
+  - a larger "Exclusive for" ribbon;
+  - bigger portrait cards (181 × 264) laid over the foot of the backdrop;
+  - studio cut-outs that are placed individually, not by one group scale. The backdrop and subject share one placement, so the subject stays in its hole, while the softbox and camera have their own.
+
+Each placement was fitted against the target by masked image matching, then checked with outline overlays. In the target, the camera is stretched sideways; the sample keeps its true proportions and matches its height and position. `node tests/e2e/render-sample.mjs` exports the sample at 1× through the app's own exporter for side-by-side checks.
+
 ## Known limitations
 
 - **Studio cut-outs** are traced from the photo by `scripts/trace-studio-masks.py` (2026-11-23), replacing the first hand-drawn polygons, which cut into the gear and let the studio wall show. Colour rules plus sub-pixel edge tracing give the result as editable polygons. Very fine detail (cable strands, the softbox's thinnest ribs) is simplified to about 1 px, and the original photo is unchanged. Re-run the script if `demo/original_background.png` changes; a unit test checks the recorded hash.
