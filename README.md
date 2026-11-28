@@ -41,7 +41,7 @@ npm run build          # typecheck + production build into dist/
 npm run sample:prepare && npm run test:e2e   # end-to-end workflows in headless Edge/Chrome
 ```
 
-`node tests/e2e/snapshot.mjs` (with the dev server running) saves sample screenshots for a visual check.
+`node tests/e2e/snapshot.mjs` (with the dev server running) saves sample screenshots for a visual check; `node tests/e2e/render-sample.mjs [out.png]` exports the sample at 1× through the app's exporter.
 
 `test:e2e` starts Vite if needed, drives the real editor with real mouse and keyboard input over the Chrome DevTools Protocol, and writes screenshots and exported files to `tests/e2e/out/`. Set `GRAPHENE_BROWSER` to a browser executable if Edge/Chrome is not in a standard location, and `HEADED=1` to watch it run.
 

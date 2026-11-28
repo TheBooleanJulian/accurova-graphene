@@ -165,36 +165,36 @@ try {
 
   let pose;
   await step("Click selects the group; double-click enters it", async () => {
-    pose = await byName("3 Pose");
-    const c = await centerOf("3 Pose");
+    pose = await byName("3 Poses");
+    const c = await centerOf("3 Poses");
     await b.click(c.x, c.y);
     const headline = await byName("Headline");
     ok(JSON.stringify(await state("s.selection")) === JSON.stringify([headline.id]), "first click selects the Headline group");
     await b.dblclick(c.x, c.y);
     ok((await state("s.enteredGroup")) === headline.id, "double-click enters the group");
-    ok(JSON.stringify(await state("s.selection")) === JSON.stringify([pose.id]), "and selects 3 Pose");
+    ok(JSON.stringify(await state("s.selection")) === JSON.stringify([pose.id]), "and selects 3 Poses");
   });
 
   await step("Drag moves a layer; undo and redo restore it", async () => {
     await js(`${G}.setState({ snapping: false })`);
     const zoom = await state("s.view.zoom");
-    const c = await centerOf("3 Pose");
+    const c = await centerOf("3 Poses");
     await b.drag(c.x, c.y, c.x + 60, c.y + 30);
-    const moved = await byName("3 Pose");
+    const moved = await byName("3 Poses");
     near(moved.x, pose.x + 60 / zoom, 0.6, "x moved by the drag distance");
     near(moved.y, pose.y + 30 / zoom, 0.6, "y moved by the drag distance");
     await b.key("z", CTRL);
-    const undone = await byName("3 Pose");
+    const undone = await byName("3 Poses");
     near(undone.x, pose.x, 0.01, "undo restores x");
     near(undone.y, pose.y, 0.01, "undo restores y");
     await b.key("z", CTRL | SHIFT);
-    near((await byName("3 Pose")).x, moved.x, 0.01, "redo re-applies the move");
+    near((await byName("3 Poses")).x, moved.x, 0.01, "redo re-applies the move");
     await b.key("z", CTRL);
     await b.key("ArrowRight");
     await b.key("ArrowRight", SHIFT);
-    near((await byName("3 Pose")).x, pose.x + 11, 0.01, "arrow keys nudge 1 px and 10 px");
+    near((await byName("3 Poses")).x, pose.x + 11, 0.01, "arrow keys nudge 1 px and 10 px");
     await b.key("z", CTRL);
-    near((await byName("3 Pose")).x, pose.x, 0.01, "nudges undo as one step");
+    near((await byName("3 Poses")).x, pose.x, 0.01, "nudges undo as one step");
     await js(`${G}.setState({ snapping: true })`);
     await b.key("Escape");
     await b.key("Escape");
@@ -389,18 +389,18 @@ try {
   });
 
   await step("Edit text in place; undo restores the wording", async () => {
-    const c = await centerOf("Fast and Easy");
+    const c = await centerOf("BNI Crescendo Special");
     await b.click(c.x, c.y, { modifiers: CTRL });
     await b.key("Enter");
     await b.waitFor(`document.activeElement?.dataset?.testid === 'text-editor'`, { label: "text editor focused" });
     await b.type("Quick and Easy");
     await b.screenshot(join(out, "03-text-editing.png"));
     await b.key("Escape");
-    const t = await byName("Fast and Easy");
+    const t = await byName("BNI Crescendo Special");
     ok(t.text === "Quick and Easy", `text updated (got "${t.text}")`);
     ok((await state("s.editingTextId")) === null, "editor closed");
     await b.key("z", CTRL);
-    ok((await byName("Fast and Easy")).text === "Fast and Easy", "undo restores the approved wording");
+    ok((await byName("BNI Crescendo Special")).text === "BNI Crescendo Special", "undo restores the approved wording");
   });
 
   let addedText, addedRibbon, addedIcon;
@@ -523,7 +523,7 @@ try {
     await b.waitFor(`!!document.querySelector('[data-testid="export-image"]')`, { timeout: 180000, label: "export rendered" });
     const dims = await js(`(() => { const i = document.querySelector('[data-testid="export-image"]'); return { w: +i.dataset.width, h: +i.dataset.height }; })()`);
     ok(dims.w === 3294 && dims.h === 1844, `2× of 1647 × 922 (got ${dims.w} × ${dims.h})`);
-    // Sample pixels from the rendered export: the red offer panel and the navy "3 Pose".
+    // Sample pixels from the rendered export: the red offer panel and the navy "3 Poses".
     const px = await js(`(async () => {
       const img = document.querySelector('[data-testid="export-image"]');
       await img.decode();
